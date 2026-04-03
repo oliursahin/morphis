@@ -1,17 +1,5 @@
 @import "tailwindcss";
 
-:root {
-  --bg-primary: #09090b;
-  --bg-secondary: #18181b;
-  --bg-hover: #27272a;
-  --bg-selected: #3f3f46;
-  --text-primary: #fafafa;
-  --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
-  --border: #27272a;
-  --accent: #fafafa;
-}
-
 body {
   margin: 0;
   font-family:
@@ -21,4 +9,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
   overflow: hidden;
   user-select: none;
+  background: #ffffff;
+  color: #1a1a1a;
 }
