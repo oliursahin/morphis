@@ -41,6 +41,7 @@ export default function SearchOverlay(props: SearchOverlayProps) {
     setSearching(true);
     try {
       const rows = await invoke<ThreadRow[]>("search_threads", { query: q });
+      if (q !== query()) return;
       setResults(rows.map((r) => ({
         id: r.id,
         fromName: r.fromName,
