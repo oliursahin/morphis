@@ -55,8 +55,8 @@ pub async fn list_inbox(
     // Fetch threads from Gmail, filtered by label or query
     let limit = max_results.unwrap_or(30);
     let list = if let Some(q) = &query {
-        // label: queries may include archived emails — don't force in:inbox
-        let full_query = if q.starts_with("label:") {
+        // Don't prepend in:inbox for label queries or queries that manage their own scope
+        let full_query = if q.starts_with("label:") || q.contains("in:") || q.contains("-in:") {
             q.clone()
         } else {
             format!("in:inbox {q}")
@@ -214,6 +214,29 @@ pub struct SplitQueryInput {
 pub struct SplitUnreadCount {
     pub id: String,
     pub unread_count: u32,
+}
+
+/// Archive a thread (remove INBOX label in Gmail).
+#[tauri::command]
+pub async fn archive_thread(
+    state: State<'_, AppState>,
+    thread_id: String,
+) -> Result<(), Error> {
+    let account_id = {
+        let conn = state.db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
+        conn.query_row(
+            "SELECT id FROM accounts WHERE is_active = 1 ORDER BY created_at ASC LIMIT 1",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|_| Error::Auth("No active account.".into()))?
+    };
+
+    let token = oauth::get_valid_token(&state.db, &account_id).await?;
+    let client = GmailClient::new(token);
+    client.modify_thread(&thread_id, &[], &["INBOX"]).await?;
+    log::info!("Archived thread {thread_id}");
+    Ok(())
 }
 
 /// Parse "Name <email>" or "email" format.
