@@ -668,8 +668,9 @@ pub async fn send_email(
     let subject = sanitize_header(&subject);
     let date = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S %z").to_string();
 
-    let body_plain = body.clone();
-    let body_html = body
+    let body_with_sig = format!("{body}\n\n---\nSent with Memphis");
+    let body_plain = body_with_sig.clone();
+    let body_html = body_with_sig
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
@@ -763,8 +764,9 @@ pub async fn send_reply(
     let date = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S %z").to_string();
 
     // Escape body for plain text, and produce a simple HTML version
-    let body_plain = body.clone();
-    let body_html = body
+    let body_with_sig = format!("{body}\n\n---\nSent with Memphis");
+    let body_plain = body_with_sig.clone();
+    let body_html = body_with_sig
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
