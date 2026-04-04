@@ -147,6 +147,29 @@ impl GmailClient {
         Ok(att.data.unwrap_or_default())
     }
 
+    /// Send a raw RFC 2822 email message (base64url-encoded).
+    pub async fn send_message(&self, raw: &str) -> Result<(), Error> {
+        let url = format!("{GMAIL_API}/messages/send");
+
+        let body = serde_json::json!({ "raw": raw });
+
+        let resp = self
+            .http
+            .post(&url)
+            .bearer_auth(&self.access_token)
+            .json(&body)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(Error::Internal(format!("Gmail send {status}: {body}")));
+        }
+
+        Ok(())
+    }
+
     /// Modify labels on a thread (archive = remove INBOX, etc.)
     pub async fn modify_thread(
         &self,
