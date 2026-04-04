@@ -141,7 +141,7 @@ export default function ThreadView(props: ThreadViewProps) {
       const sentMessage: Message = {
         id: `sent-${Date.now()}`,
         fromName: "Me",
-        fromEmail: sentTo, // will be corrected on refresh
+        fromEmail: "me",
         to: sentTo,
         cc: sentCc,
         date: dateStr,
