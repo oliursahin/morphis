@@ -16,7 +16,7 @@ export default function ComposeView(props: ComposeViewProps) {
   const [sendError, setSendError] = createSignal<string | null>(null);
 
   const handleSend = async () => {
-    if (!to().trim() || !body().trim()) return;
+    if (sending() || !to().trim() || !body().trim()) return;
 
     setSending(true);
     setSendError(null);
