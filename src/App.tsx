@@ -5,6 +5,7 @@ import ComposeView from "./components/ComposeModal";
 import SearchOverlay from "./components/SearchOverlay";
 import CommandBar from "./components/CommandBar";
 import Inbox, { MOCK_THREADS } from "./pages/Inbox";
+import Settings from "./pages/Settings";
 
 interface OpenThread {
   id: string;
@@ -19,6 +20,7 @@ export default function App() {
   const [showCommandBar, setShowCommandBar] = createSignal(false);
   const [selectedId, setSelectedId] = createSignal<string | null>(null);
   const [inlineReply, setInlineReply] = createSignal(false);
+  const [showSettings, setShowSettings] = createSignal(false);
 
   const threadIds = () => MOCK_THREADS.map((t) => t.id);
 
@@ -39,9 +41,10 @@ export default function App() {
 
   const handleCommand = (id: string) => {
     switch (id) {
-      case "inbox": break;
+      case "inbox": setShowSettings(false); setShowCompose(false); setOpenThread(null); break;
       case "compose": setShowCompose(true); break;
       case "search": setShowSearch(true); break;
+      case "settings": setShowSettings(true); break;
     }
   };
 
@@ -54,6 +57,7 @@ export default function App() {
       if (showSearch()) { setShowSearch(false); return; }
       if (showCommandBar()) { setShowCommandBar(false); return; }
       if (inlineReply()) { setInlineReply(false); return; }
+      if (showSettings()) { setShowSettings(false); return; }
       if (openThread()) { setOpenThread(null); return; }
       return;
     }
@@ -138,7 +142,7 @@ export default function App() {
         {/* Nav: drag region + split inbox tabs (hidden when thread/compose open) */}
         <div class="flex-shrink-0" data-tauri-drag-region>
           <div class="h-10" data-tauri-drag-region />
-          <Show when={!openThread() && !showCompose()}>
+          <Show when={!openThread() && !showCompose() && !showSettings()}>
             <div class="flex items-center gap-0 px-20 pb-0" data-tauri-drag-region>
               <For each={[
                 { id: "important", label: "Important", count: 4 },
@@ -167,6 +171,7 @@ export default function App() {
         </div>
 
         <div class="flex-1 overflow-hidden">
+          <Show when={showSettings()} fallback={
           <Show when={showCompose()} fallback={
             <Show when={openThread()} fallback={
               <Inbox
@@ -195,6 +200,9 @@ export default function App() {
             </Show>
           }>
             <ComposeView onClose={() => setShowCompose(false)} />
+          </Show>
+          }>
+            <Settings onBack={() => setShowSettings(false)} />
           </Show>
         </div>
       </div>
