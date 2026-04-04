@@ -357,6 +357,14 @@ export default function ThreadView(props: ThreadViewProps) {
               />
             </div>
 
+            {/* Signature preview */}
+            <div class="flex-shrink-0 pt-2">
+              <div class="text-[13px] text-zinc-400 leading-relaxed">
+                ---<br />
+                Sent with Memphis
+              </div>
+            </div>
+
             {/* Footer */}
             <div class="flex items-center gap-3 mt-3 flex-shrink-0">
               <Show when={sendError()}>

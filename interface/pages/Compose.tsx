@@ -146,6 +146,14 @@ export default function ComposeView(props: ComposeViewProps) {
           placeholder="Write your message..."
           disabled={sending()}
         />
+
+        {/* Signature preview */}
+        <div class="flex-shrink-0 pb-6 pt-2">
+          <div class="text-[13px] text-zinc-400 leading-relaxed">
+            ---<br />
+            Sent with Memphis
+          </div>
+        </div>
       </div>
     </div>
   );
