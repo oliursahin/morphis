@@ -155,13 +155,12 @@ export default function Inbox(props: InboxProps) {
                     </span>
                   </div>
 
-                  {/* Date — hidden on hover */}
-                  <div class="text-[12px] text-zinc-400 flex-shrink-0 tabular-nums pl-3 group-hover:hidden">
-                    {thread.date}
-                  </div>
-
-                  {/* Hover actions */}
-                  <div class="hidden group-hover:flex items-center gap-0.5 flex-shrink-0 pl-3" onClick={(e) => e.stopPropagation()}>
+                  {/* Date / hover actions — stacked in same space to prevent layout shift */}
+                  <div class="relative w-[140px] flex-shrink-0 pl-3">
+                    <div class="flex justify-end text-[12px] text-zinc-400 tabular-nums group-hover:invisible">
+                      {thread.date}
+                    </div>
+                    <div class="absolute inset-0 flex items-center justify-end invisible group-hover:visible" onClick={(e) => e.stopPropagation()}>
                     <button class="p-1.5 rounded-md text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition-colors" title="Star (s)">
                       <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M8 1.5l1.85 3.75L14 5.9l-3 2.93.71 4.12L8 10.88l-3.71 2.07.71-4.12-3-2.93 4.15-.65z" />
@@ -189,6 +188,7 @@ export default function Inbox(props: InboxProps) {
                         <path d="M8 5v3l2 2" />
                       </svg>
                     </button>
+                    </div>
                   </div>
                 </div>
               )}
