@@ -1,5 +1,6 @@
 import { createSignal, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
+import type { ThreadRow } from "../pages/Inbox";
 
 interface SearchOverlayProps {
   onClose: () => void;
@@ -12,18 +13,6 @@ interface SearchResult {
   subject: string;
   snippet: string;
   date: string;
-}
-
-interface ThreadRow {
-  id: string;
-  gmailThreadId: string;
-  subject: string;
-  snippet: string;
-  fromName: string;
-  fromEmail: string;
-  date: string;
-  isRead: boolean;
-  messageCount: number;
 }
 
 export default function SearchOverlay(props: SearchOverlayProps) {

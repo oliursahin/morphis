@@ -22,6 +22,14 @@ interface InboxResponse {
   nextPageToken: string | null;
 }
 
+const MAILBOX_DEFS = [
+  { id: "done", label: "Done", query: "-in:inbox -in:trash -in:spam", emptyText: "No archived emails" },
+  { id: "sent", label: "Sent", query: "in:sent", emptyText: "No sent emails" },
+  { id: "drafts", label: "Drafts", query: "in:drafts", emptyText: "No drafts" },
+  { id: "bin", label: "Bin", query: "in:trash", emptyText: "Bin is empty" },
+  { id: "spam", label: "Spam", query: "in:spam", emptyText: "No spam" },
+] as const;
+
 export default function App() {
   const [authed, setAuthed] = createSignal<boolean | null>(null); // null = loading
   const [needsSetup, setNeedsSetup] = createSignal(false);
@@ -44,21 +52,12 @@ export default function App() {
   const [selectedId, setSelectedId] = createSignal<string | null>(null);
   const [inlineReply, setInlineReply] = createSignal(false);
   const [showSettings, setShowSettings] = createSignal(false);
-  const [showDone, setShowDone] = createSignal(false);
-  const [doneThreads, setDoneThreads] = createSignal<ThreadRow[]>([]);
-  const [loadingDone, setLoadingDone] = createSignal(false);
-  const [showSent, setShowSent] = createSignal(false);
-  const [sentThreads, setSentThreads] = createSignal<ThreadRow[]>([]);
-  const [loadingSent, setLoadingSent] = createSignal(false);
-  const [showDrafts, setShowDrafts] = createSignal(false);
-  const [draftsThreads, setDraftsThreads] = createSignal<ThreadRow[]>([]);
-  const [loadingDrafts, setLoadingDrafts] = createSignal(false);
-  const [showBin, setShowBin] = createSignal(false);
-  const [binThreads, setBinThreads] = createSignal<ThreadRow[]>([]);
-  const [loadingBin, setLoadingBin] = createSignal(false);
-  const [showSpam, setShowSpam] = createSignal(false);
-  const [spamThreads, setSpamThreads] = createSignal<ThreadRow[]>([]);
-  const [loadingSpam, setLoadingSpam] = createSignal(false);
+
+  // Unified mailbox state
+  const [mailboxes, setMailboxes] = createSignal<Record<string, { threads: ThreadRow[]; loading: boolean }>>(
+    Object.fromEntries(MAILBOX_DEFS.map((m) => [m.id, { threads: [], loading: false }]))
+  );
+  const [activeMailbox, setActiveMailbox] = createSignal<string | null>(null);
 
   const fetchUnreadCounts = async (splitList: SplitConfig[]) => {
     // Build queries with exclusions so counts are mutually exclusive
@@ -91,11 +90,7 @@ export default function App() {
           setSplits(saved);
           setActiveTab(saved[0].id);
           loadAllSplits();
-          prefetchDone();
-          prefetchSent();
-          prefetchDrafts();
-          prefetchBin();
-          prefetchSpam();
+          prefetchAllMailboxes();
           fetchUnreadCounts(saved);
         } else {
           setNeedsSetup(true);
@@ -170,127 +165,41 @@ export default function App() {
   // Switching tabs is instant — data already in cache
   const loadSplit = (splitId: string) => {
     setActiveTab(splitId);
-    setShowDone(false);
-    setShowSent(false);
-    setShowDrafts(false);
-    setShowBin(false);
-    setShowSpam(false);
+    setActiveMailbox(null);
   };
 
-  const prefetchDone = async () => {
-    setLoadingDone(true);
+  // Unified mailbox prefetch
+  const prefetchMailbox = async (id: string) => {
+    const def = MAILBOX_DEFS.find((m) => m.id === id);
+    if (!def) return;
+    setMailboxes((prev) => ({ ...prev, [id]: { ...prev[id], loading: true } }));
     try {
       const res = await invoke<InboxResponse>("list_inbox", {
         maxResults: 50,
         labelId: null,
-        query: "-in:inbox -in:trash -in:spam",
+        query: def.query,
       });
-      setDoneThreads(res.threads);
+      setMailboxes((prev) => ({ ...prev, [id]: { threads: res.threads, loading: false } }));
     } catch (e) {
-      console.error("Failed to load done:", e);
-    } finally {
-      setLoadingDone(false);
+      console.error(`Failed to load ${id}:`, e);
+      setMailboxes((prev) => ({ ...prev, [id]: { ...prev[id], loading: false } }));
     }
   };
 
-  const prefetchSent = async () => {
-    setLoadingSent(true);
-    try {
-      const res = await invoke<InboxResponse>("list_inbox", {
-        maxResults: 50,
-        labelId: null,
-        query: "in:sent",
-      });
-      setSentThreads(res.threads);
-    } catch (e) {
-      console.error("Failed to load sent:", e);
-    } finally {
-      setLoadingSent(false);
-    }
-  };
-
-  const prefetchDrafts = async () => {
-    setLoadingDrafts(true);
-    try {
-      const res = await invoke<InboxResponse>("list_inbox", {
-        maxResults: 50,
-        labelId: null,
-        query: "in:drafts",
-      });
-      setDraftsThreads(res.threads);
-    } catch (e) {
-      console.error("Failed to load drafts:", e);
-    } finally {
-      setLoadingDrafts(false);
-    }
-  };
-
-  const prefetchBin = async () => {
-    setLoadingBin(true);
-    try {
-      const res = await invoke<InboxResponse>("list_inbox", {
-        maxResults: 50,
-        labelId: null,
-        query: "in:trash",
-      });
-      setBinThreads(res.threads);
-    } catch (e) {
-      console.error("Failed to load bin:", e);
-    } finally {
-      setLoadingBin(false);
-    }
+  const prefetchAllMailboxes = () => {
+    for (const def of MAILBOX_DEFS) prefetchMailbox(def.id);
   };
 
   const closeAllViews = () => {
-    setShowDone(false);
-    setShowSent(false);
-    setShowDrafts(false);
-    setShowBin(false);
-    setShowSpam(false);
+    setActiveMailbox(null);
     setOpenThread(null);
     setShowSettings(false);
     setShowCompose(false);
   };
 
-  const prefetchSpam = async () => {
-    setLoadingSpam(true);
-    try {
-      const res = await invoke<InboxResponse>("list_inbox", {
-        maxResults: 50,
-        labelId: null,
-        query: "in:spam",
-      });
-      setSpamThreads(res.threads);
-    } catch (e) {
-      console.error("Failed to load spam:", e);
-    } finally {
-      setLoadingSpam(false);
-    }
-  };
-
-  const openSentView = () => {
+  const openMailbox = (id: string) => {
     closeAllViews();
-    setShowSent(true);
-  };
-
-  const openDoneView = () => {
-    closeAllViews();
-    setShowDone(true);
-  };
-
-  const openDraftsView = () => {
-    closeAllViews();
-    setShowDrafts(true);
-  };
-
-  const openBinView = () => {
-    closeAllViews();
-    setShowBin(true);
-  };
-
-  const openSpamView = () => {
-    closeAllViews();
-    setShowSpam(true);
+    setActiveMailbox(id);
   };
 
   const onAuthComplete = () => {
@@ -306,11 +215,7 @@ export default function App() {
     if (chosen.length > 0) {
       setActiveTab(chosen[0].id);
       loadAllSplits();
-      prefetchDone();
-      prefetchSent();
-      prefetchDrafts();
-      prefetchBin();
-      prefetchSpam();
+      prefetchAllMailboxes();
       fetchUnreadCounts(chosen);
     }
   };
@@ -350,75 +255,16 @@ export default function App() {
     if (next >= 0 && next < ids.length) selectAndOpen(ids[next]);
   };
 
-  // Archive thread: optimistic UI removal + Gmail API call
-  const archiveThread = async (threadId: string) => {
-    // Find the thread before removing so we can add it to done
-    const archivedThread = threads().find((t) => t.id === threadId);
+  // Unified archive/trash: optimistic UI removal + Gmail API call
+  const removeThread = async (
+    threadId: string,
+    action: "archive" | "trash",
+  ) => {
+    const removedThread = threads().find((t) => t.id === threadId);
 
-    // Compute the next thread BEFORE removing from cache
     const currentIds = threadIds();
     const currentIdx = currentIds.indexOf(threadId);
-    let nextThread: { id: string; subject: string } | null = null;
-    if (currentIdx >= 0) {
-      // Prefer next, then previous
-      const nextId = currentIds[currentIdx + 1] ?? currentIds[currentIdx - 1];
-      if (nextId) {
-        const t = threads().find((th) => th.id === nextId);
-        if (t) nextThread = { id: t.id, subject: t.subject };
-      }
-    }
-
-    // Optimistic: remove from all split caches immediately
-    setSplitThreads((prev) => {
-      const next: Record<string, ThreadRow[]> = {};
-      for (const [key, list] of Object.entries(prev)) {
-        next[key] = list.filter((t) => t.id !== threadId);
-      }
-      return next;
-    });
-
-    // Optimistic: add to done list
-    if (archivedThread) {
-      setDoneThreads((prev) => [archivedThread, ...prev]);
-    }
-
-    // If viewing this thread, advance to next thread (stay in thread view)
-    if (openThread()?.id === threadId) {
-      setInlineReply(false);
-      if (nextThread) {
-        setOpenThread(nextThread);
-        setSelectedId(nextThread.id);
-      } else {
-        // No more threads — go back to list
-        setOpenThread(null);
-        setSelectedId(null);
-      }
-    } else {
-      // Not viewing — just advance selection in list
-      if (nextThread) {
-        setSelectedId(nextThread.id);
-      } else {
-        setSelectedId(null);
-      }
-    }
-
-    // Fire API call in background
-    try {
-      await invoke("archive_thread", { threadId });
-    } catch (e) {
-      console.error("Archive failed:", e);
-      // On failure, refetch the active split to restore
-      loadAllSplits();
-    }
-  };
-
-  const trashThread = async (threadId: string) => {
-    const trashedThread = threads().find((t) => t.id === threadId);
-
-    // Compute next thread BEFORE removing from cache
-    const currentIds = threadIds();
-    const currentIdx = currentIds.indexOf(threadId);
-    let nextThread: { id: string; subject: string } | null = null;
+    let nextThread: OpenThread | null = null;
     if (currentIdx >= 0) {
       const nextId = currentIds[currentIdx + 1] ?? currentIds[currentIdx - 1];
       if (nextId) {
@@ -436,9 +282,13 @@ export default function App() {
       return next;
     });
 
-    // Optimistic: add to bin list
-    if (trashedThread) {
-      setBinThreads((prev) => [trashedThread, ...prev]);
+    // Optimistic: add to target mailbox
+    if (removedThread) {
+      const targetMailbox = action === "archive" ? "done" : "bin";
+      setMailboxes((prev) => ({
+        ...prev,
+        [targetMailbox]: { ...prev[targetMailbox], threads: [removedThread, ...prev[targetMailbox].threads] },
+      }));
     }
 
     // If viewing this thread, advance to next
@@ -459,35 +309,32 @@ export default function App() {
       }
     }
 
-    // Fire API call in background
+    const command = action === "archive" ? "archive_thread" : "trash_thread";
     try {
-      await invoke("trash_thread", { threadId });
+      await invoke(command, { threadId });
     } catch (e) {
-      console.error("Trash failed:", e);
+      console.error(`${action} failed:`, e);
       loadAllSplits();
     }
   };
+
+  const archiveThread = (threadId: string) => removeThread(threadId, "archive");
+  const trashThread = (threadId: string) => removeThread(threadId, "trash");
 
   const handleLogout = async () => {
     try {
       await invoke("logout");
       setAuthed(false);
       setSplitThreads({});
-      setDoneThreads([]);
-      setSentThreads([]);
-      setDraftsThreads([]);
-      setBinThreads([]);
-      setSpamThreads([]);
+      setMailboxes(
+        Object.fromEntries(MAILBOX_DEFS.map((m) => [m.id, { threads: [], loading: false }]))
+      );
       setSplits([]);
       setNeedsSetup(false);
       setOpenThread(null);
       setShowCompose(false);
       setShowSettings(false);
-      setShowDone(false);
-      setShowSent(false);
-      setShowDrafts(false);
-      setShowBin(false);
-      setShowSpam(false);
+      setActiveMailbox(null);
     } catch (e) {
       console.error("Logout failed:", e);
     }
@@ -500,13 +347,13 @@ export default function App() {
       case "search": setShowSearch(true); break;
       case "settings": setShowSettings(true); break;
       case "account": handleLogout(); break;
-      case "done": openDoneView(); break;
-      case "sent": openSentView(); break;
-      case "drafts": openDraftsView(); break;
+      case "done": openMailbox("done"); break;
+      case "sent": openMailbox("sent"); break;
+      case "drafts": openMailbox("drafts"); break;
       case "bin":
-      case "trash-folder": openBinView(); break;
+      case "trash-folder": openMailbox("bin"); break;
       case "spam":
-      case "spam-folder": openSpamView(); break;
+      case "spam-folder": openMailbox("spam"); break;
       case "archive":
       case "mark-done": {
         const tid = openThread()?.id ?? selectedId();
@@ -532,11 +379,7 @@ export default function App() {
       if (showCommandBar()) { setShowCommandBar(false); return; }
       if (inlineReply()) { setInlineReply(false); return; }
       if (showSettings()) { setShowSettings(false); return; }
-      if (showDone()) { setShowDone(false); return; }
-      if (showSent()) { setShowSent(false); return; }
-      if (showDrafts()) { setShowDrafts(false); return; }
-      if (showBin()) { setShowBin(false); return; }
-      if (showSpam()) { setShowSpam(false); return; }
+      if (activeMailbox()) { setActiveMailbox(null); return; }
       if (openThread()) { setOpenThread(null); return; }
       return;
     }
@@ -625,11 +468,11 @@ export default function App() {
               OS
             </div>
             <div class="hidden group-hover/ws:flex flex-col items-center space-y-3 mt-3">
-              <SidebarIcon icon="done" label="done" onClick={openDoneView} />
-              <SidebarIcon icon="sent" label="sent" onClick={openSentView} />
-              <SidebarIcon icon="drafts" label="drafts" onClick={openDraftsView} />
-              <SidebarIcon icon="bin" label="bin" onClick={openBinView} />
-              <SidebarIcon icon="spam" label="spam" onClick={openSpamView} />
+              <SidebarIcon icon="done" label="done" onClick={() => openMailbox("done")} />
+              <SidebarIcon icon="sent" label="sent" onClick={() => openMailbox("sent")} />
+              <SidebarIcon icon="drafts" label="drafts" onClick={() => openMailbox("drafts")} />
+              <SidebarIcon icon="bin" label="bin" onClick={() => openMailbox("bin")} />
+              <SidebarIcon icon="spam" label="spam" onClick={() => openMailbox("spam")} />
             </div>
           </div>
           <div class="flex-1" />
@@ -646,7 +489,7 @@ export default function App() {
         {/* Nav: drag region + split inbox tabs (hidden when thread/compose open) */}
         <div class="flex-shrink-0" data-tauri-drag-region>
           <div class="h-10" data-tauri-drag-region />
-          <Show when={!openThread() && !showCompose() && !showSettings() && !showDone() && !showSent() && !showDrafts() && !showBin() && !showSpam()}>
+          <Show when={!openThread() && !showCompose() && !showSettings() && !activeMailbox()}>
             <div class="flex items-center gap-0 px-20 pb-0" data-tauri-drag-region>
               <For each={splits().length > 0
                 ? splits().map((s) => ({ id: s.id, label: s.name, gmailLabelId: s.gmailLabelId, query: s.query }))
@@ -681,11 +524,7 @@ export default function App() {
 
         <div class="flex-1 relative overflow-hidden">
           <Show when={showSettings()} fallback={
-          <Show when={showSpam()} fallback={
-          <Show when={showBin()} fallback={
-          <Show when={showDrafts()} fallback={
-          <Show when={showSent()} fallback={
-          <Show when={showDone()} fallback={
+          <Show when={activeMailbox()} fallback={
           <Show when={showCompose()} fallback={
             <Show when={openThread()} fallback={
               <Inbox
@@ -695,6 +534,7 @@ export default function App() {
                 onSelect={selectAndOpen}
                 onOpenThread={(t) => setOpenThread(t)}
                 onArchive={archiveThread}
+                onTrash={trashThread}
               />
             }>
               {(thread) => (
@@ -719,199 +559,23 @@ export default function App() {
             <ComposeView onClose={() => setShowCompose(false)} />
           </Show>
           }>
-            <div class="absolute inset-0 overflow-y-auto pt-3 pb-12">
-              <div class="flex items-center gap-2 px-20 mb-4">
-                <button onClick={() => setShowDone(false)} class="text-zinc-400 hover:text-zinc-600 transition-colors">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M10 12L6 8l4-4" />
-                  </svg>
-                </button>
-                <span class="text-[15px] font-medium text-zinc-900">Done</span>
-              </div>
-              <Show when={!loadingDone()} fallback={
-                <div class="flex items-center justify-center h-32 text-[13px] text-zinc-400">Loading…</div>
-              }>
-              <Show when={doneThreads().length > 0} fallback={
-                <div class="flex items-center justify-center h-32 text-[13px] text-zinc-400">No archived emails</div>
-              }>
-                <For each={doneThreads()}>
-                  {(thread) => (
-                    <div
-                      class="group flex items-center gap-3 px-20 py-2.5 cursor-pointer hover:bg-zinc-50"
-                      onClick={() => {
-                        setSelectedId(thread.id);
-                        setOpenThread({ id: thread.id, subject: thread.subject });
-                      }}
-                    >
-                      <div class="w-40 flex-shrink-0 truncate">
-                        <span class="text-[13px] text-zinc-500">{thread.fromName}</span>
-                      </div>
-                      <div class="flex-1 min-w-0 truncate">
-                        <span class="text-[13px] text-zinc-400">{thread.subject}</span>
-                      </div>
-                      <div class="text-[12px] text-zinc-400 tabular-nums">{thread.date}</div>
-                    </div>
-                  )}
-                </For>
-              </Show>
-              </Show>
-            </div>
-          </Show>
-          }>
-            <div class="absolute inset-0 overflow-y-auto pt-3 pb-12">
-              <div class="flex items-center gap-2 px-20 mb-4">
-                <button onClick={() => setShowSent(false)} class="text-zinc-400 hover:text-zinc-600 transition-colors">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M10 12L6 8l4-4" />
-                  </svg>
-                </button>
-                <span class="text-[15px] font-medium text-zinc-900">Sent</span>
-              </div>
-              <Show when={!loadingSent()} fallback={
-                <div class="flex items-center justify-center h-32 text-[13px] text-zinc-400">Loading…</div>
-              }>
-              <Show when={sentThreads().length > 0} fallback={
-                <div class="flex items-center justify-center h-32 text-[13px] text-zinc-400">No sent emails</div>
-              }>
-                <For each={sentThreads()}>
-                  {(thread) => (
-                    <div
-                      class="group flex items-center gap-3 px-20 py-2.5 cursor-pointer hover:bg-zinc-50"
-                      onClick={() => {
-                        setSelectedId(thread.id);
-                        setOpenThread({ id: thread.id, subject: thread.subject });
-                      }}
-                    >
-                      <div class="w-40 flex-shrink-0 truncate">
-                        <span class="text-[13px] text-zinc-500">{thread.fromName}</span>
-                      </div>
-                      <div class="flex-1 min-w-0 truncate">
-                        <span class="text-[13px] text-zinc-400">{thread.subject}</span>
-                      </div>
-                      <div class="text-[12px] text-zinc-400 tabular-nums">{thread.date}</div>
-                    </div>
-                  )}
-                </For>
-              </Show>
-              </Show>
-            </div>
-          </Show>
-          }>
-            <div class="absolute inset-0 overflow-y-auto pt-3 pb-12">
-              <div class="flex items-center gap-2 px-20 mb-4">
-                <button onClick={() => setShowDrafts(false)} class="text-zinc-400 hover:text-zinc-600 transition-colors">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M10 12L6 8l4-4" />
-                  </svg>
-                </button>
-                <span class="text-[15px] font-medium text-zinc-900">Drafts</span>
-              </div>
-              <Show when={!loadingDrafts()} fallback={
-                <div class="flex items-center justify-center h-32 text-[13px] text-zinc-400">Loading…</div>
-              }>
-              <Show when={draftsThreads().length > 0} fallback={
-                <div class="flex items-center justify-center h-32 text-[13px] text-zinc-400">No drafts</div>
-              }>
-                <For each={draftsThreads()}>
-                  {(thread) => (
-                    <div
-                      class="group flex items-center gap-3 px-20 py-2.5 cursor-pointer hover:bg-zinc-50"
-                      onClick={() => {
-                        setSelectedId(thread.id);
-                        setOpenThread({ id: thread.id, subject: thread.subject });
-                      }}
-                    >
-                      <div class="w-40 flex-shrink-0 truncate">
-                        <span class="text-[13px] text-zinc-500">{thread.fromName}</span>
-                      </div>
-                      <div class="flex-1 min-w-0 truncate">
-                        <span class="text-[13px] text-zinc-400">{thread.subject}</span>
-                      </div>
-                      <div class="text-[12px] text-zinc-400 tabular-nums">{thread.date}</div>
-                    </div>
-                  )}
-                </For>
-              </Show>
-              </Show>
-            </div>
-          </Show>
-          }>
-            <div class="absolute inset-0 overflow-y-auto pt-3 pb-12">
-              <div class="flex items-center gap-2 px-20 mb-4">
-                <button onClick={() => setShowBin(false)} class="text-zinc-400 hover:text-zinc-600 transition-colors">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M10 12L6 8l4-4" />
-                  </svg>
-                </button>
-                <span class="text-[15px] font-medium text-zinc-900">Bin</span>
-              </div>
-              <Show when={!loadingBin()} fallback={
-                <div class="flex items-center justify-center h-32 text-[13px] text-zinc-400">Loading…</div>
-              }>
-              <Show when={binThreads().length > 0} fallback={
-                <div class="flex items-center justify-center h-32 text-[13px] text-zinc-400">Bin is empty</div>
-              }>
-                <For each={binThreads()}>
-                  {(thread) => (
-                    <div
-                      class="group flex items-center gap-3 px-20 py-2.5 cursor-pointer hover:bg-zinc-50"
-                      onClick={() => {
-                        setSelectedId(thread.id);
-                        setOpenThread({ id: thread.id, subject: thread.subject });
-                      }}
-                    >
-                      <div class="w-40 flex-shrink-0 truncate">
-                        <span class="text-[13px] text-zinc-500">{thread.fromName}</span>
-                      </div>
-                      <div class="flex-1 min-w-0 truncate">
-                        <span class="text-[13px] text-zinc-400">{thread.subject}</span>
-                      </div>
-                      <div class="text-[12px] text-zinc-400 tabular-nums">{thread.date}</div>
-                    </div>
-                  )}
-                </For>
-              </Show>
-              </Show>
-            </div>
-          </Show>
-          }>
-            <div class="absolute inset-0 overflow-y-auto pt-3 pb-12">
-              <div class="flex items-center gap-2 px-20 mb-4">
-                <button onClick={() => setShowSpam(false)} class="text-zinc-400 hover:text-zinc-600 transition-colors">
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M10 12L6 8l4-4" />
-                  </svg>
-                </button>
-                <span class="text-[15px] font-medium text-zinc-900">Spam</span>
-              </div>
-              <Show when={!loadingSpam()} fallback={
-                <div class="flex items-center justify-center h-32 text-[13px] text-zinc-400">Loading…</div>
-              }>
-              <Show when={spamThreads().length > 0} fallback={
-                <div class="flex items-center justify-center h-32 text-[13px] text-zinc-400">No spam</div>
-              }>
-                <For each={spamThreads()}>
-                  {(thread) => (
-                    <div
-                      class="group flex items-center gap-3 px-20 py-2.5 cursor-pointer hover:bg-zinc-50"
-                      onClick={() => {
-                        setSelectedId(thread.id);
-                        setOpenThread({ id: thread.id, subject: thread.subject });
-                      }}
-                    >
-                      <div class="w-40 flex-shrink-0 truncate">
-                        <span class="text-[13px] text-zinc-500">{thread.fromName}</span>
-                      </div>
-                      <div class="flex-1 min-w-0 truncate">
-                        <span class="text-[13px] text-zinc-400">{thread.subject}</span>
-                      </div>
-                      <div class="text-[12px] text-zinc-400 tabular-nums">{thread.date}</div>
-                    </div>
-                  )}
-                </For>
-              </Show>
-              </Show>
-            </div>
+            {(mbId) => {
+              const def = () => MAILBOX_DEFS.find((m) => m.id === mbId())!;
+              const mb = () => mailboxes()[mbId()];
+              return (
+                <MailboxView
+                  label={def().label}
+                  emptyText={def().emptyText}
+                  threads={mb().threads}
+                  loading={mb().loading}
+                  onBack={() => setActiveMailbox(null)}
+                  onOpenThread={(thread) => {
+                    setSelectedId(thread.id);
+                    setOpenThread({ id: thread.id, subject: thread.subject });
+                  }}
+                />
+              );
+            }}
           </Show>
           }>
             <Settings onBack={() => setShowSettings(false)} />
@@ -938,6 +602,54 @@ export default function App() {
     </Show>
     </Show>
     </Show>
+  );
+}
+
+/* ── Mailbox view ── */
+
+function MailboxView(props: {
+  label: string;
+  emptyText: string;
+  threads: ThreadRow[];
+  loading: boolean;
+  onBack: () => void;
+  onOpenThread: (thread: ThreadRow) => void;
+}) {
+  return (
+    <div class="absolute inset-0 overflow-y-auto pt-3 pb-12">
+      <div class="flex items-center gap-2 px-20 mb-4">
+        <button onClick={props.onBack} class="text-zinc-400 hover:text-zinc-600 transition-colors">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 12L6 8l4-4" />
+          </svg>
+        </button>
+        <span class="text-[15px] font-medium text-zinc-900">{props.label}</span>
+      </div>
+      <Show when={!props.loading} fallback={
+        <div class="flex items-center justify-center h-32 text-[13px] text-zinc-400">Loading…</div>
+      }>
+      <Show when={props.threads.length > 0} fallback={
+        <div class="flex items-center justify-center h-32 text-[13px] text-zinc-400">{props.emptyText}</div>
+      }>
+        <For each={props.threads}>
+          {(thread) => (
+            <div
+              class="group flex items-center gap-3 px-20 py-2.5 cursor-pointer hover:bg-zinc-50"
+              onClick={() => props.onOpenThread(thread)}
+            >
+              <div class="w-40 flex-shrink-0 truncate">
+                <span class="text-[13px] text-zinc-500">{thread.fromName}</span>
+              </div>
+              <div class="flex-1 min-w-0 truncate">
+                <span class="text-[13px] text-zinc-400">{thread.subject}</span>
+              </div>
+              <div class="text-[12px] text-zinc-400 tabular-nums">{thread.date}</div>
+            </div>
+          )}
+        </For>
+      </Show>
+      </Show>
+    </div>
   );
 }
 
