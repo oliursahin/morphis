@@ -1,9 +1,9 @@
 import { createSignal, onMount, onCleanup, For } from "solid-js";
 import { Show } from "solid-js/web";
-import ThreadView from "./components/ThreadView";
-import ComposeView from "./components/ComposeModal";
-import SearchOverlay from "./components/SearchOverlay";
-import CommandBar from "./components/CommandBar";
+import ThreadView from "./pages/Thread";
+import ComposeView from "./pages/Compose";
+import SearchPalette from "./components/SearchPalette";
+import CommandPalette from "./components/CommandPalette";
 import Inbox, { MOCK_THREADS } from "./pages/Inbox";
 import Settings from "./pages/Settings";
 
@@ -209,7 +209,7 @@ export default function App() {
 
       {/* ── Overlays ── */}
       <Show when={showSearch()}>
-        <SearchOverlay
+        <SearchPalette
           onClose={() => setShowSearch(false)}
           onSelectThread={(id) => {
             const thread = MOCK_THREADS.find((t) => t.id === id);
@@ -218,7 +218,7 @@ export default function App() {
         />
       </Show>
       <Show when={showCommandBar()}>
-        <CommandBar onClose={() => setShowCommandBar(false)} onCommand={handleCommand} />
+        <CommandPalette onClose={() => setShowCommandBar(false)} onCommand={handleCommand} />
       </Show>
     </div>
   );

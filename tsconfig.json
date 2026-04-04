@@ -15,8 +15,8 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./interface/*"]
     }
   },
-  "include": ["src"]
+  "include": ["interface"]
 }
