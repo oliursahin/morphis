@@ -273,7 +273,13 @@ export default function ThreadView(props: ThreadViewProps) {
               {/* To row */}
               <div class="flex items-center gap-2">
                 <button
-                  onClick={() => props.onReplyClose?.()}
+                  onClick={() => {
+                    setReplyBody("");
+                    setReplyCc("");
+                    setReplyBcc("");
+                    setShowCcBcc(false);
+                    props.onReplyClose?.();
+                  }}
                   class="text-zinc-400 hover:text-zinc-600 transition-colors p-0.5 flex-shrink-0"
                   title="Discard reply"
                 >
