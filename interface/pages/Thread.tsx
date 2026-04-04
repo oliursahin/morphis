@@ -54,12 +54,12 @@ export default function ThreadView(props: ThreadViewProps) {
         } else {
           setCollapsed(new Set<string>());
         }
-        // Scroll thread to bottom after load
+        // Scroll to top on initial load
         setTimeout(() => {
           if (threadContentRef) {
-            threadContentRef.scrollTop = threadContentRef.scrollHeight;
+            threadContentRef.scrollTop = 0;
           }
-        }, 100);
+        }, 50);
       })
       .catch((e) => {
         console.error("Failed to load thread:", e);
@@ -272,6 +272,15 @@ export default function ThreadView(props: ThreadViewProps) {
             <div class="flex-shrink-0 space-y-2 mb-3">
               {/* To row */}
               <div class="flex items-center gap-2">
+                <button
+                  onClick={() => props.onReplyClose?.()}
+                  class="text-zinc-400 hover:text-zinc-600 transition-colors p-0.5 flex-shrink-0"
+                  title="Discard reply"
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 4l8 8M12 4l-8 8" />
+                  </svg>
+                </button>
                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-400 flex-shrink-0">
                   <path d="M6 12L2 8l4-4" />
                   <path d="M2 8h9a3 3 0 013 3v1" />
