@@ -3,11 +3,12 @@ import { invoke } from "@tauri-apps/api/core";
 
 interface ComposeViewProps {
   onClose: () => void;
+  initialSubject?: string;
 }
 
 export default function ComposeView(props: ComposeViewProps) {
   const [to, setTo] = createSignal("");
-  const [subject, setSubject] = createSignal("");
+  const [subject, setSubject] = createSignal(props.initialSubject ?? "");
   const [body, setBody] = createSignal("");
   const [showCc, setShowCc] = createSignal(false);
   const [cc, setCc] = createSignal("");
