@@ -276,7 +276,12 @@ pub async fn get_unread_counts(
         .map(|split| {
             let client = client.clone();
             async move {
-                let query = format!("{} is:unread", split.query);
+                // Scope category queries to inbox (mirrors list_inbox logic)
+                let query = if split.query.starts_with("category:") {
+                    format!("in:inbox {} is:unread", split.query)
+                } else {
+                    format!("{} is:unread", split.query)
+                };
                 match client.list_threads(Some(&query), 1, None, None).await {
                     Ok(resp) => SplitUnreadCount {
                         id: split.id,
