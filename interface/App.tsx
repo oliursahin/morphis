@@ -1,6 +1,7 @@
 import { createSignal, onMount, onCleanup, For } from "solid-js";
 import { Show } from "solid-js/web";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import ThreadView from "./pages/Thread";
 import ComposeView from "./pages/Compose";
 import SearchPalette from "./components/SearchPalette";
@@ -447,6 +448,30 @@ export default function App() {
   onMount(() => {
     checkAuth();
     document.addEventListener("keydown", handleKeyDown);
+
+    // Listen for background sync events from the Rust backend
+    const unlistenPromise = listen<{ eventType: string; changedThreadIds: string[] }>(
+      "sync:update",
+      (event) => {
+        if (event.payload.changedThreadIds.length > 0) {
+          loadAllSplits();
+          prefetchAllMailboxes();
+        }
+      },
+    );
+
+    // Trigger immediate sync when app regains focus (e.g. after sleep/wake)
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        invoke("trigger_sync").catch(console.error);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    onCleanup(() => {
+      unlistenPromise.then((fn) => fn());
+      document.removeEventListener("visibilitychange", handleVisibility);
+    });
   });
   onCleanup(() => document.removeEventListener("keydown", handleKeyDown));
 
