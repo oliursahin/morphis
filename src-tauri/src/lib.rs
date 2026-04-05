@@ -11,6 +11,7 @@ mod sync;
 use tauri::Manager;
 
 use state::AppState;
+use sync::engine::SyncEngine;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -56,7 +57,16 @@ pub fn run() {
                 db::migrations::run_migrations(&conn).expect("failed to run migrations");
             }
 
+            let sync_db = state.db.clone();
+            let sync_stop = state.sync_stop.clone();
             app.manage(state);
+
+            // Spawn background sync engine
+            let sync_handle = app.handle().clone();
+            tokio::spawn(async move {
+                let engine = SyncEngine::new(sync_handle, sync_db, sync_stop);
+                engine.run_poll_loop(30).await;
+            });
 
             Ok(())
         })
@@ -79,6 +89,7 @@ pub fn run() {
             commands::settings::get_splits,
             commands::settings::save_setting,
             commands::settings::get_setting,
+            commands::sync::trigger_sync,
             commands::unsplash::get_inbox_zero_photo,
         ])
         .run(tauri::generate_context!())

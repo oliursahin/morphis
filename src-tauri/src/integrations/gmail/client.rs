@@ -24,6 +24,9 @@ impl GmailClient {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
+            if status == reqwest::StatusCode::NOT_FOUND {
+                return Err(Error::NotFound(format!("Gmail API 404: {body}")));
+            }
             return Err(Error::Internal(format!("Gmail API {status}: {body}")));
         }
         Ok(resp.json().await?)
@@ -119,6 +122,47 @@ impl GmailClient {
             "removeLabelIds": remove_labels,
         });
         self.post_json(&url, &body).await
+    }
+
+    /// Get the user's profile (email, historyId).
+    pub async fn get_profile(&self) -> Result<ProfileResponse, Error> {
+        let url = format!("{GMAIL_API}/profile");
+        self.get_json(&url).await
+    }
+
+    /// List history changes since the given historyId.
+    /// Handles pagination internally, returning all changes.
+    pub async fn list_history(&self, start_history_id: &str) -> Result<HistoryResponse, Error> {
+        let mut all_records: Vec<HistoryRecord> = Vec::new();
+        let mut page_token: Option<String> = None;
+        let mut latest_history_id = String::new();
+
+        loop {
+            let mut url = format!(
+                "{GMAIL_API}/history?startHistoryId={start_history_id}\
+                 &historyTypes=messageAdded\
+                 &historyTypes=labelAdded\
+                 &historyTypes=labelRemoved"
+            );
+            if let Some(ref pt) = page_token {
+                url.push_str(&format!("&pageToken={pt}"));
+            }
+
+            let page: HistoryListPage = self.get_json(&url).await?;
+            latest_history_id = page.history_id;
+            if let Some(records) = page.history {
+                all_records.extend(records);
+            }
+            match page.next_page_token {
+                Some(pt) => page_token = Some(pt),
+                None => break,
+            }
+        }
+
+        Ok(HistoryResponse {
+            history: all_records,
+            history_id: latest_history_id,
+        })
     }
 }
 
@@ -217,4 +261,56 @@ impl GmailMessage {
             }
         })
     }
+}
+
+// --- Profile & History API response types ---
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileResponse {
+    pub email_address: String,
+    pub history_id: String,
+}
+
+/// Internal page response from Gmail History API.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct HistoryListPage {
+    pub history: Option<Vec<HistoryRecord>>,
+    pub next_page_token: Option<String>,
+    pub history_id: String,
+}
+
+/// Aggregated history response (all pages combined).
+pub struct HistoryResponse {
+    pub history: Vec<HistoryRecord>,
+    pub history_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryRecord {
+    pub messages: Option<Vec<HistoryMessage>>,
+    pub messages_added: Option<Vec<HistoryMessageWrapper>>,
+    pub labels_added: Option<Vec<HistoryLabelMod>>,
+    pub labels_removed: Option<Vec<HistoryLabelMod>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryMessage {
+    pub id: String,
+    pub thread_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HistoryMessageWrapper {
+    pub message: HistoryMessage,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HistoryLabelMod {
+    pub message: HistoryMessage,
+    #[serde(rename = "labelIds")]
+    pub label_ids: Vec<String>,
 }
