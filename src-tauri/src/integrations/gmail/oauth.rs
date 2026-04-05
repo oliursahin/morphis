@@ -45,10 +45,14 @@ pub struct OAuthConfig {
 impl OAuthConfig {
     pub fn from_env() -> Result<Self, Error> {
         Ok(Self {
-            client_id: std::env::var("GOOGLE_CLIENT_ID")
-                .map_err(|_| Error::Internal("GOOGLE_CLIENT_ID not set".into()))?,
-            client_secret: std::env::var("GOOGLE_CLIENT_SECRET")
-                .map_err(|_| Error::Internal("GOOGLE_CLIENT_SECRET not set".into()))?,
+            client_id: option_env!("GOOGLE_CLIENT_ID")
+                .map(String::from)
+                .or_else(|| std::env::var("GOOGLE_CLIENT_ID").ok())
+                .ok_or_else(|| Error::Internal("GOOGLE_CLIENT_ID not set".into()))?,
+            client_secret: option_env!("GOOGLE_CLIENT_SECRET")
+                .map(String::from)
+                .or_else(|| std::env::var("GOOGLE_CLIENT_SECRET").ok())
+                .ok_or_else(|| Error::Internal("GOOGLE_CLIENT_SECRET not set".into()))?,
         })
     }
 }
@@ -275,15 +279,33 @@ pub async fn get_valid_token(
         cache.failures.remove(account_id);
     }
 
-    // Read refresh token from DB
-    let refresh_token = {
+    // Check DB for a still-valid access token (covers cold start / cache miss)
+    let (db_access_token, db_expires_at, refresh_token) = {
         let conn = db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
         let mut stmt = conn.prepare(
-            "SELECT refresh_token FROM oauth_tokens WHERE account_id = ?1",
+            "SELECT access_token, expires_at, refresh_token FROM oauth_tokens WHERE account_id = ?1",
         )?;
-        stmt.query_row(rusqlite::params![account_id], |row| row.get::<_, String>(0))
-            .map_err(|_| Error::Auth("No tokens found for account".into()))?
+        stmt.query_row(rusqlite::params![account_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .map_err(|_| Error::Auth("No tokens found for account".into()))?
     };
+
+    // If the DB token is still valid, seed the cache and return it
+    if let Ok(expires_at) = chrono::DateTime::parse_from_rfc3339(&db_expires_at) {
+        let now = chrono::Utc::now();
+        if expires_at > now + chrono::Duration::seconds(30) {
+            cache.tokens.insert(
+                account_id.to_string(),
+                (db_access_token.clone(), Instant::now()),
+            );
+            return Ok(db_access_token);
+        }
+    }
 
     log::info!("Refreshing access token for account {account_id}");
     let config = OAuthConfig::from_env()?;
