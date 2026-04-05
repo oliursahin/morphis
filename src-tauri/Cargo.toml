@@ -12,6 +12,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2.5", features = [] }
+dotenvy = "0.15"
 
 [dependencies]
 # Tauri core + plugins
@@ -79,6 +80,9 @@ open = "5"
 
 # URL encoding
 urlencoding = "2"
+
+# Load .env at runtime
+dotenvy = "0.15"
 
 # Async stream utilities (bounded concurrent fetching)
 futures = "0.3"
