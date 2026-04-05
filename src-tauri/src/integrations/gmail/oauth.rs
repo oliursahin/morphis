@@ -45,13 +45,13 @@ pub struct OAuthConfig {
 impl OAuthConfig {
     pub fn from_env() -> Result<Self, Error> {
         Ok(Self {
-            client_id: option_env!("GOOGLE_CLIENT_ID")
-                .map(String::from)
-                .or_else(|| std::env::var("GOOGLE_CLIENT_ID").ok())
+            client_id: std::env::var("GOOGLE_CLIENT_ID")
+                .ok()
+                .or_else(|| option_env!("GOOGLE_CLIENT_ID").map(String::from))
                 .ok_or_else(|| Error::Internal("GOOGLE_CLIENT_ID not set".into()))?,
-            client_secret: option_env!("GOOGLE_CLIENT_SECRET")
-                .map(String::from)
-                .or_else(|| std::env::var("GOOGLE_CLIENT_SECRET").ok())
+            client_secret: std::env::var("GOOGLE_CLIENT_SECRET")
+                .ok()
+                .or_else(|| option_env!("GOOGLE_CLIENT_SECRET").map(String::from))
                 .ok_or_else(|| Error::Internal("GOOGLE_CLIENT_SECRET not set".into()))?,
         })
     }
