@@ -5,6 +5,7 @@ import ThreadView from "./pages/Thread";
 import ComposeView from "./pages/Compose";
 import SearchPalette from "./components/SearchPalette";
 import CommandPalette from "./components/CommandPalette";
+import LabelPicker from "./components/LabelPicker";
 import Inbox from "./pages/Inbox";
 import type { ThreadRow } from "./pages/Inbox";
 import Settings from "./pages/Settings";
@@ -36,6 +37,8 @@ const MAILBOX_DEFS = [
   { id: "drafts", label: "Drafts", query: "in:drafts", emptyText: "No drafts" },
   { id: "bin", label: "Bin", query: "in:trash", emptyText: "Bin is empty" },
   { id: "spam", label: "Spam", query: "in:spam", emptyText: "No spam" },
+  { id: "starred", label: "Starred", query: "is:starred", emptyText: "No starred emails" },
+  { id: "all", label: "All Mail", query: "-in:spam -in:trash", emptyText: "No emails" },
 ] as const;
 
 export default function App() {
@@ -68,6 +71,8 @@ export default function App() {
   const [activeTab, setActiveTab] = createSignal("important");
   const [openThread, setOpenThread] = createSignal<OpenThread | null>(null);
   const [showCompose, setShowCompose] = createSignal(false);
+  const [composeInitial, setComposeInitial] = createSignal<{ subject?: string } | null>(null);
+  const [labelPickerMode, setLabelPickerMode] = createSignal<"apply-label" | "remove-label" | "move-to" | null>(null);
   const [showSearch, setShowSearch] = createSignal(false);
   const [showCommandBar, setShowCommandBar] = createSignal(false);
   const [selectedId, setSelectedId] = createSignal<string | null>(null);
@@ -278,7 +283,7 @@ export default function App() {
   // Unified archive/trash: optimistic UI removal + Gmail API call
   const removeThread = async (
     threadId: string,
-    action: "archive" | "trash",
+    action: "archive" | "trash" | "spam",
   ) => {
     const removedThread = threads().find((t) => t.id === threadId);
 
@@ -304,7 +309,7 @@ export default function App() {
 
     // Optimistic: add to target mailbox
     if (removedThread) {
-      const targetMailbox = action === "archive" ? "done" : "bin";
+      const targetMailbox = action === "archive" ? "done" : action === "trash" ? "bin" : "spam";
       setMailboxes((prev) => ({
         ...prev,
         [targetMailbox]: { ...prev[targetMailbox], threads: [removedThread, ...prev[targetMailbox].threads] },
@@ -329,7 +334,7 @@ export default function App() {
       }
     }
 
-    const command = action === "archive" ? "archive_thread" : "trash_thread";
+    const command = action === "archive" ? "archive_thread" : action === "trash" ? "trash_thread" : "spam_thread";
     try {
       await invoke(command, { threadId });
     } catch (e) {
@@ -340,6 +345,7 @@ export default function App() {
 
   const archiveThread = (threadId: string) => removeThread(threadId, "archive");
   const trashThread = (threadId: string) => removeThread(threadId, "trash");
+  const spamThread = (threadId: string) => removeThread(threadId, "spam");
 
   const handleLogout = async () => {
     try {
@@ -361,29 +367,116 @@ export default function App() {
   };
 
   const handleCommand = (id: string) => {
+    const tid = () => openThread()?.id ?? selectedId();
     switch (id) {
-      case "inbox": setShowSettings(false); setShowCompose(false); setOpenThread(null); break;
-      case "compose": setShowCompose(true); break;
-      case "search": setShowSearch(true); break;
-      case "settings": setShowSettings(true); break;
-      case "account": handleLogout(); break;
+      // Navigation
+      case "inbox": setShowSettings(false); setShowCompose(false); setOpenThread(null); setActiveMailbox(null); break;
       case "done": openMailbox("done"); break;
       case "sent": openMailbox("sent"); break;
       case "drafts": openMailbox("drafts"); break;
+      case "starred": openMailbox("starred"); break;
+      case "all": openMailbox("all"); break;
       case "bin":
       case "trash-folder": openMailbox("bin"); break;
-      case "spam":
       case "spam-folder": openMailbox("spam"); break;
-      case "archive":
-      case "mark-done": {
-        const tid = openThread()?.id ?? selectedId();
-        if (tid) archiveThread(tid);
+      case "settings": setShowSettings(true); break;
+      case "shortcuts": setShowSettings(true); break;
+
+      // Compose / reply
+      case "compose": setComposeInitial(null); setShowCompose(true); break;
+      case "reply":
+      case "reply-all":
+        if (openThread()) setInlineReply(true);
+        break;
+      case "forward": {
+        const thread = openThread();
+        if (thread) {
+          setComposeInitial({ subject: `Fwd: ${thread.subject}` });
+          setShowCompose(true);
+        }
         break;
       }
+
+      // Search
+      case "search": setShowSearch(true); break;
+
+      // Thread actions
+      case "archive":
+      case "mark-done": { const t = tid(); if (t) archiveThread(t); break; }
       case "delete":
-      case "trash": {
-        const tid = openThread()?.id ?? selectedId();
-        if (tid) trashThread(tid);
+      case "trash": { const t = tid(); if (t) trashThread(t); break; }
+      case "spam": { const t = tid(); if (t) spamThread(t); break; }
+      case "mark-unread": {
+        const t = tid();
+        if (t) {
+          setSplitThreads((prev) => {
+            const next: Record<string, ThreadRow[]> = {};
+            for (const [key, list] of Object.entries(prev)) {
+              next[key] = list.map((th) => th.id === t ? { ...th, isRead: false } : th);
+            }
+            return next;
+          });
+          invoke("mark_thread_unread", { threadId: t }).catch(console.error);
+        }
+        break;
+      }
+      case "star": {
+        const t = tid();
+        if (t) invoke("star_thread", { threadId: t, starred: true }).catch(console.error);
+        break;
+      }
+
+      // Labels
+      case "apply-label":
+      case "remove-label":
+      case "move-to":
+        setLabelPickerMode(id as "apply-label" | "remove-label" | "move-to");
+        break;
+
+      // Organize
+      case "create-split":
+      case "edit-splits": setNeedsSetup(true); break;
+      case "block-sender": {
+        const t = tid();
+        if (t) {
+          const thread = threads().find((th) => th.id === t);
+          if (thread?.fromEmail) {
+            invoke("modify_thread_labels", {
+              threadId: t,
+              addLabelIds: ["SPAM"],
+              removeLabelIds: ["INBOX"],
+            }).catch(console.error);
+            spamThread(t);
+          }
+        }
+        break;
+      }
+      case "unsubscribe": {
+        const t = tid();
+        if (t) {
+          invoke("get_unsubscribe_url", { threadId: t })
+            .then((url) => { if (url) window.open(url as string, "_blank"); })
+            .catch(console.error);
+        }
+        break;
+      }
+
+      // Other
+      case "account": handleLogout(); break;
+      case "download-eml": {
+        const t = tid();
+        const thread = openThread();
+        if (t) {
+          invoke<string>("download_eml", { threadId: t }).then((eml) => {
+            const blob = new Blob([eml], { type: "message/rfc822" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${thread?.subject || "email"}.eml`;
+            a.click();
+            URL.revokeObjectURL(url);
+          }).catch(console.error);
+        }
         break;
       }
     }
@@ -592,7 +685,7 @@ export default function App() {
               )}
             </Show>
           }>
-            <ComposeView onClose={() => setShowCompose(false)} />
+            <ComposeView onClose={() => { setShowCompose(false); setComposeInitial(null); }} initialSubject={composeInitial()?.subject} />
           </Show>
           }>
             {(mbId) => {
@@ -633,6 +726,18 @@ export default function App() {
       </Show>
       <Show when={showCommandBar()}>
         <CommandPalette onClose={() => setShowCommandBar(false)} onCommand={handleCommand} />
+      </Show>
+      <Show when={labelPickerMode()}>
+        {(mode) => {
+          const tid = openThread()?.id ?? selectedId();
+          return tid ? (
+            <LabelPicker
+              mode={mode()}
+              threadId={tid}
+              onClose={() => setLabelPickerMode(null)}
+            />
+          ) : null;
+        }}
       </Show>
     </div>
     </Show>
