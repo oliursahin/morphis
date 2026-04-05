@@ -12,13 +12,11 @@ import Onboarding from "./pages/Onboarding";
 import SplitSetup from "./pages/SplitSetup";
 import type { SplitConfig } from "./pages/SplitSetup";
 
-// Inbox-zero images — Vite resolves these to hashed URLs at build time
-const inboxZeroImages = Object.values(
-  import.meta.glob("./assets/inbox-zero/*.jpg", { eager: true, import: "default" })
-) as string[];
-
-// Pick one per app session (stable across re-renders, changes on reload)
-const randomImage = inboxZeroImages[Math.floor(Math.random() * inboxZeroImages.length)];
+interface InboxZeroPhoto {
+  url: string;
+  photographer: string;
+  photographerUrl: string;
+}
 
 interface OpenThread {
   id: string;
@@ -74,6 +72,17 @@ export default function App() {
   const [inlineReply, setInlineReply] = createSignal(false);
   const [showSettings, setShowSettings] = createSignal(false);
 
+  // Inbox-zero background from Unsplash (fetched once per session)
+  const [inboxZeroPhoto, setInboxZeroPhoto] = createSignal<InboxZeroPhoto | null>(null);
+  const fetchInboxZeroPhoto = async () => {
+    try {
+      const photo = await invoke<InboxZeroPhoto>("get_inbox_zero_photo");
+      setInboxZeroPhoto(photo);
+    } catch (e) {
+      console.warn("Failed to fetch inbox-zero photo:", e);
+    }
+  };
+
   // Unified mailbox state
   const [mailboxes, setMailboxes] = createSignal<Record<string, { threads: ThreadRow[]; loading: boolean }>>(
     Object.fromEntries(MAILBOX_DEFS.map((m) => [m.id, { threads: [], loading: false }]))
@@ -109,6 +118,7 @@ export default function App() {
           setActiveTab(saved[0].id);
           loadAllSplits();
           prefetchAllMailboxes();
+          fetchInboxZeroPhoto();
         } else {
           setNeedsSetup(true);
         }
@@ -237,6 +247,7 @@ export default function App() {
       setActiveTab(chosen[0].id);
       loadAllSplits();
       prefetchAllMailboxes();
+      fetchInboxZeroPhoto();
     }
   };
 
@@ -476,13 +487,22 @@ export default function App() {
     }>
     <div class="h-screen w-screen text-zinc-900 flex overflow-hidden relative">
       {/* ── Inbox-zero full-bleed background ── */}
-      <Show when={isInboxZero()}>
+      <Show when={isInboxZero() && inboxZeroPhoto()}>
         <img
-          src={randomImage}
+          src={inboxZeroPhoto()!.url}
           alt=""
           class="absolute inset-0 w-full h-full object-cover"
         />
         <div class="absolute inset-0 bg-black/10" />
+        {/* Unsplash attribution */}
+        <a
+          href={inboxZeroPhoto()!.photographerUrl + "?utm_source=march&utm_medium=referral"}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="absolute bottom-2 right-3 z-20 text-[10px] text-white/50 hover:text-white/80 transition-colors"
+        >
+          Photo by {inboxZeroPhoto()!.photographer} on Unsplash
+        </a>
       </Show>
 
       {/* ── Sidebar — transparent when inbox zero ── */}
