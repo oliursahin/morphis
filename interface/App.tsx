@@ -474,13 +474,19 @@ export default function App() {
     checkAuth();
     document.addEventListener("keydown", handleKeyDown);
 
-    // Listen for background sync events from the Rust backend
+    // Listen for background sync events from the Rust backend.
+    // Debounce to avoid overlapping refetches when events arrive in quick succession.
+    let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
     const unlistenPromise = listen<{ eventType: string; changedThreadIds: string[] }>(
       "sync:update",
       (event) => {
         if (event.payload.changedThreadIds.length > 0) {
-          loadAllSplits();
-          prefetchAllMailboxes();
+          if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
+          syncDebounceTimer = setTimeout(() => {
+            syncDebounceTimer = null;
+            loadAllSplits();
+            prefetchAllMailboxes();
+          }, 300);
         }
       },
     );
