@@ -74,12 +74,8 @@ impl SyncEngine {
     pub async fn do_sync_once(&self) -> Result<Option<SyncEvent>, Error> {
         let account_id = {
             let conn = self.db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
-            conn.query_row(
-                "SELECT id FROM accounts WHERE is_active = 1 ORDER BY created_at ASC LIMIT 1",
-                [],
-                |row| row.get::<_, String>(0),
-            )
-            .map_err(|_| Error::Internal("No active account for sync".into()))?
+            crate::commands::inbox::resolve_account_id(&conn)
+                .map_err(|_| Error::Internal("No active account for sync".into()))?
         };
 
         // Read existing checkpoint
