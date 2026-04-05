@@ -109,7 +109,7 @@ export default function App() {
 
     // Only broad category splits (category:*) get exclusions — specific matchers
     // (from:, filename:, label:, etc.) use their raw queries
-    if (!split.query.startsWith("category:")) return split.query;
+    if (!split.query.startsWith("category:")) return `in:inbox ${split.query}`;
 
     // Collect other non-label, non-category splits' queries to exclude
     const others = allSplits
