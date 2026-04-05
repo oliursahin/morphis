@@ -43,7 +43,15 @@ export default function App() {
   const threads = () => splitThreads()[activeTab()] ?? [];
   const loadingInbox = () => loadingSplits().has(activeTab());
 
-  const [unreadCounts, setUnreadCounts] = createSignal<Record<string, number>>({});
+  // Derive unread counts reactively from cached thread data so badge matches the list
+  const unreadCounts = () => {
+    const all = splitThreads();
+    const out: Record<string, number> = {};
+    for (const [id, list] of Object.entries(all)) {
+      out[id] = list.filter((t) => !t.isRead).length;
+    }
+    return out;
+  };
   const [activeTab, setActiveTab] = createSignal("important");
   const [openThread, setOpenThread] = createSignal<OpenThread | null>(null);
   const [showCompose, setShowCompose] = createSignal(false);
@@ -58,22 +66,6 @@ export default function App() {
     Object.fromEntries(MAILBOX_DEFS.map((m) => [m.id, { threads: [], loading: false }]))
   );
   const [activeMailbox, setActiveMailbox] = createSignal<string | null>(null);
-
-  const fetchUnreadCounts = async (splitList: SplitConfig[]) => {
-    // Build queries with exclusions so counts are mutually exclusive
-    const queries = splitList.map((split) => {
-      const q = buildQueryForSplit(split.id) ?? "";
-      return { id: split.id, query: q };
-    });
-    try {
-      const counts = await invoke<{ id: string; unreadCount: number }[]>("get_unread_counts", { splits: queries });
-      const map: Record<string, number> = {};
-      for (const c of counts) map[c.id] = c.unreadCount;
-      setUnreadCounts(map);
-    } catch (e) {
-      console.error("Failed to fetch unread counts:", e);
-    }
-  };
 
   // Bump this whenever default split queries change to force re-setup
   const SPLITS_VERSION = 5;
@@ -91,7 +83,6 @@ export default function App() {
           setActiveTab(saved[0].id);
           loadAllSplits();
           prefetchAllMailboxes();
-          fetchUnreadCounts(saved);
         } else {
           setNeedsSetup(true);
         }
@@ -107,8 +98,11 @@ export default function App() {
     const split = allSplits.find((s) => s.id === splitId);
     if (!split?.query) return undefined;
 
-    // Only broad category splits (category:*) get exclusions — specific matchers
-    // (from:, filename:, label:, etc.) use their raw queries
+    // label: splits manage their own scope; category: splits get exclusions below
+    if (split.query.startsWith("label:")) return split.query;
+
+    // Other specific matchers (from:, filename:, OR groups, etc.) need in:inbox
+    // so archived threads don't pollute listings and unread badges
     if (!split.query.startsWith("category:")) return `in:inbox ${split.query}`;
 
     // Collect other non-label, non-category splits' queries to exclude
@@ -216,7 +210,6 @@ export default function App() {
       setActiveTab(chosen[0].id);
       loadAllSplits();
       prefetchAllMailboxes();
-      fetchUnreadCounts(chosen);
     }
   };
 
