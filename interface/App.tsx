@@ -213,11 +213,16 @@ export default function App() {
       matches = labels.has(`CATEGORY_${clean.slice(9).toUpperCase()}`);
     } else if (clean.startsWith("from:")) {
       // Check all sender emails in the thread (matches Gmail search behavior)
+      // Supports domain wildcards: from:*@domain.com
       const target = clean.slice(5).toLowerCase();
+      const isDomainWildcard = target.startsWith("*@");
+      const domainSuffix = isDomainWildcard ? target.slice(1) : null; // "@domain.com"
+      const matchEmail = (e: string) =>
+        domainSuffix ? e.toLowerCase().endsWith(domainSuffix) : e.toLowerCase() === target;
       const senders = thread.senderEmails;
       matches = senders && senders.length > 0
-        ? senders.some((e) => e.toLowerCase() === target)
-        : thread.fromEmail.toLowerCase() === target;
+        ? senders.some(matchEmail)
+        : matchEmail(thread.fromEmail);
     } else {
       return null; // Can't evaluate locally (filename:, has:, etc.)
     }
