@@ -172,17 +172,22 @@ struct EmailParams {
     bcc: Option<String>,
     subject: String,
     body: String,
+    body_html: Option<String>,
     in_reply_to: Option<String>,
 }
 
 /// Build an RFC 2822 MIME message (multipart/alternative with plain + HTML).
 fn build_rfc2822(params: &EmailParams) -> String {
     let body_plain = params.body.clone();
-    let body_html = params.body
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('\n', "<br>");
+    let body_html = if let Some(html) = &params.body_html {
+        html.clone()
+    } else {
+        params.body
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('\n', "<br>")
+    };
 
     let boundary = format!("----=_Part_{}", uuid::Uuid::new_v4().as_simple());
     let date = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S %z").to_string();
@@ -810,6 +815,7 @@ pub async fn send_email(
     bcc: Option<String>,
     subject: String,
     body: String,
+    body_html: Option<String>,
 ) -> Result<(), Error> {
     let (client, from_email, from_display) = get_gmail_client_with_sender(&state).await?;
     let raw = build_rfc2822(&EmailParams {
@@ -820,6 +826,7 @@ pub async fn send_email(
         bcc: bcc.map(|v| sanitize_header(&v)),
         subject: sanitize_header(&subject),
         body,
+        body_html: body_html,
         in_reply_to: None,
     });
     let encoded = URL_SAFE_NO_PAD.encode(raw.as_bytes());
@@ -849,6 +856,7 @@ pub async fn send_reply(
         bcc: bcc.map(|v| sanitize_header(&v)),
         subject: sanitize_header(&subject),
         body,
+        body_html: None,
         in_reply_to: Some(sanitize_header(&message_id)),
     });
     let encoded = URL_SAFE_NO_PAD.encode(raw.as_bytes());
@@ -868,6 +876,7 @@ pub async fn save_draft(
     bcc: Option<String>,
     subject: String,
     body: String,
+    body_html: Option<String>,
 ) -> Result<String, Error> {
     let (client, from_email, from_display) = get_gmail_client_with_sender(&state).await?;
     let raw = build_rfc2822(&EmailParams {
@@ -878,6 +887,7 @@ pub async fn save_draft(
         bcc: bcc.map(|v| sanitize_header(&v)),
         subject: sanitize_header(&subject),
         body,
+        body_html,
         in_reply_to: None,
     });
     let encoded = URL_SAFE_NO_PAD.encode(raw.as_bytes());
