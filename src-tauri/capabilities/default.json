@@ -10,6 +10,7 @@
     "core:event:default",
     "opener:default",
     "dialog:default",
-    "shell:default"
+    "shell:default",
+    "notification:default"
   ]
 }
