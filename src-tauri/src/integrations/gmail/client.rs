@@ -312,6 +312,8 @@ pub struct HistoryRecord {
 pub struct HistoryMessage {
     pub id: String,
     pub thread_id: String,
+    #[serde(default)]
+    pub label_ids: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]

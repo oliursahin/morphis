@@ -10,6 +10,8 @@ use crate::integrations::gmail::oauth;
 /// Result of an incremental sync cycle.
 pub struct SyncResult {
     pub changed_thread_ids: Vec<String>,
+    /// Thread IDs that received genuinely new messages in INBOX (for notifications).
+    pub new_inbox_thread_ids: Vec<String>,
     pub new_history_id: String,
 }
 
@@ -55,10 +57,19 @@ pub async fn incremental_sync(
 
     // Collect unique thread IDs from all history records
     let mut thread_ids = HashSet::new();
+    let mut new_inbox_thread_ids = HashSet::new();
     for record in &response.history {
         if let Some(ref added) = record.messages_added {
             for wrapper in added {
                 thread_ids.insert(wrapper.message.thread_id.clone());
+                // Only flag as "new inbox" if the message has an INBOX label
+                let is_inbox = wrapper.message.label_ids
+                    .as_ref()
+                    .map(|labels| labels.iter().any(|l| l == "INBOX"))
+                    .unwrap_or(false);
+                if is_inbox {
+                    new_inbox_thread_ids.insert(wrapper.message.thread_id.clone());
+                }
             }
         }
         if let Some(ref label_added) = record.labels_added {
@@ -77,6 +88,7 @@ pub async fn incremental_sync(
     // `advance_checkpoint` after confirming delivery to avoid missed updates.
     Ok(SyncResult {
         changed_thread_ids: thread_ids.into_iter().collect(),
+        new_inbox_thread_ids: new_inbox_thread_ids.into_iter().collect(),
         new_history_id: response.history_id,
     })
 }
