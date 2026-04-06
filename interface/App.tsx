@@ -969,7 +969,7 @@ export default function App() {
                 onOpenThread={(t) => setOpenThread(t)}
                 onArchive={archiveThread}
                 onTrash={trashThread}
-                onCompose={(_draftId) => {
+                onCompose={() => {
                   const draft = lastDraftData();
                   openCompose(draft ?? undefined);
                 }}
@@ -1082,7 +1082,7 @@ export default function App() {
                     setSelectedId(thread.id);
                     setOpenThread({ id: thread.id, subject: thread.subject });
                   }}
-                  onCompose={(_draftId) => {
+                  onCompose={() => {
                     const draft = lastDraftData();
                     setActiveMailbox(null);
                     openCompose(draft ?? undefined);
@@ -1186,7 +1186,7 @@ function MailboxView(props: {
   loading: boolean;
   onBack: () => void;
   onOpenThread: (thread: ThreadRow) => void;
-  onCompose?: (draftId: string) => void;
+  onCompose?: () => void;
 }) {
   return (
     <div class="absolute inset-0 overflow-y-auto pt-3 pb-12">
@@ -1210,7 +1210,7 @@ function MailboxView(props: {
               class="group flex items-center gap-3 px-20 py-2.5 cursor-pointer hover:bg-zinc-50"
               onClick={() => {
                 if (thread.labelIds?.includes("DRAFT")) {
-                  props.onCompose?.(thread.id);
+                  props.onCompose?.();
                   return;
                 }
                 props.onOpenThread(thread);
