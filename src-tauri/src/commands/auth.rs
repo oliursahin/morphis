@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use tauri::State;
 use uuid::Uuid;
 
@@ -67,6 +65,41 @@ pub async fn disconnect_account(state: State<'_, AppState>, account_id: String) 
     conn.execute("DELETE FROM oauth_tokens WHERE account_id = ?1", [&account_id])?;
     conn.execute("DELETE FROM accounts WHERE id = ?1", [&account_id])?;
     log::info!("Account disconnected: {}", account_id);
+    Ok(())
+}
+
+/// Re-fetch profile info (avatar, name) for accounts missing an avatar.
+#[tauri::command]
+pub async fn refresh_account_profiles(state: State<'_, AppState>) -> Result<(), Error> {
+    let accounts_missing_avatar: Vec<(String, String)> = {
+        let conn = state.db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
+        let mut stmt = conn.prepare(
+            "SELECT a.id, a.email FROM accounts a
+             WHERE a.is_active = 1 AND (a.avatar_url IS NULL OR a.avatar_url = '')"
+        )?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        result
+    };
+
+    for (account_id, email) in &accounts_missing_avatar {
+        match oauth::get_valid_token(&state.db, account_id).await {
+            Ok(token) => {
+                if let Ok(info) = oauth::get_user_info(&token).await {
+                    let conn = state.db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
+                    conn.execute(
+                        "UPDATE accounts SET avatar_url = ?1, display_name = COALESCE(display_name, ?2) WHERE id = ?3",
+                        rusqlite::params![info.picture, info.name, account_id],
+                    )?;
+                    log::info!("Refreshed profile for {email}");
+                }
+            }
+            Err(e) => log::warn!("Skipping profile refresh for {email}: {e}"),
+        }
+    }
     Ok(())
 }
 

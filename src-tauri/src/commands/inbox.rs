@@ -12,7 +12,7 @@ use crate::state::AppState;
 
 /// Resolve the active account ID: prefer the user-chosen `active_account_id` setting,
 /// fall back to the first active account by creation date.
-fn resolve_account_id(conn: &rusqlite::Connection) -> Result<String, Error> {
+pub fn resolve_account_id(conn: &rusqlite::Connection) -> Result<String, Error> {
     // Check if user has explicitly selected an account
     if let Ok(json) = conn.query_row(
         "SELECT value FROM settings WHERE key = 'active_account_id'",

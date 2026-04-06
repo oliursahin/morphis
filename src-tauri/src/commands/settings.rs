@@ -13,22 +13,24 @@ pub struct SplitConfig {
 }
 
 #[tauri::command]
-pub async fn save_splits(state: State<'_, AppState>, splits: Vec<SplitConfig>) -> Result<(), Error> {
+pub async fn save_splits(state: State<'_, AppState>, account_id: String, splits: Vec<SplitConfig>) -> Result<(), Error> {
     let json = serde_json::to_string(&splits)?;
+    let key = format!("splits:{account_id}");
     let conn = state.db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
     conn.execute(
-        "INSERT OR REPLACE INTO settings (key, value) VALUES ('splits', ?1)",
-        [&json],
+        "INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)",
+        [&key, &json],
     )?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn get_splits(state: State<'_, AppState>) -> Result<Vec<SplitConfig>, Error> {
+pub async fn get_splits(state: State<'_, AppState>, account_id: String) -> Result<Vec<SplitConfig>, Error> {
+    let key = format!("splits:{account_id}");
     let conn = state.db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
     let result: Result<String, _> = conn.query_row(
-        "SELECT value FROM settings WHERE key = 'splits'",
-        [],
+        "SELECT value FROM settings WHERE key = ?1",
+        [&key],
         |row| row.get(0),
     );
     match result {

@@ -1,5 +1,4 @@
-import { createSignal, onMount, onCleanup, For } from "solid-js";
-import { Show } from "solid-js/web";
+import { createSignal, createMemo, onMount, onCleanup, For, Show } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import ThreadView from "./pages/Thread";
@@ -57,15 +56,6 @@ function getInitials(account: AppAccount): string {
     : name.slice(0, 2).toUpperCase();
 }
 
-const ACCOUNT_RING_COLORS = ["border-[#CD68E6]", "border-[#32A5E3]"];
-const ACCOUNT_RING_COLORS_LIGHT = ["border-[#CD68E6]/50", "border-[#32A5E3]/50"];
-
-function getAccountRing(accounts: AppAccount[], accountId: string, light: boolean): string {
-  const idx = accounts.findIndex((a) => a.id === accountId);
-  const palette = light ? ACCOUNT_RING_COLORS_LIGHT : ACCOUNT_RING_COLORS;
-  return palette[idx % palette.length];
-}
-
 export default function App() {
   const [authed, setAuthed] = createSignal<boolean | null>(null); // null = loading
   const [accounts, setAccounts] = createSignal<AppAccount[]>([]);
@@ -81,16 +71,21 @@ export default function App() {
   const threads = () => splitThreads()[activeTab()] ?? [];
   const loadingInbox = () => loadingSplits().has(activeTab());
 
+  const activeAccount = createMemo(() => accounts().find((a) => a.id === activeAccountId()));
+
+  // Track avatar load failures so we fall back to initials
+  const [avatarFailed, setAvatarFailed] = createSignal(false);
+
   // True when showing a split with no threads and nothing else open
   const isInboxZero = () =>
     threads().length === 0 && !loadingInbox() && !openThread() && !showCompose() && !showSettings() && !activeMailbox();
 
-  // Derive unread counts reactively from cached thread data so badge matches the list
-  const unreadCounts = () => {
+  // Derive thread counts reactively from cached data — inbox zero cares about total, not unread
+  const threadCounts = () => {
     const all = splitThreads();
     const out: Record<string, number> = {};
     for (const [id, list] of Object.entries(all)) {
-      out[id] = list.filter((t) => !t.isRead).length;
+      out[id] = list.length;
     }
     return out;
   };
@@ -104,7 +99,7 @@ export default function App() {
   const [selectedId, setSelectedId] = createSignal<string | null>(null);
   const [inlineReply, setInlineReply] = createSignal(false);
   const [showSettings, setShowSettings] = createSignal(false);
-  const [showAccountSwitcher, setShowAccountSwitcher] = createSignal(false);
+  const [showAccountPicker, setShowAccountPicker] = createSignal(false);
 
   // Inbox-zero background from Unsplash (cached once per day in localStorage)
   const [inboxZeroPhoto, setInboxZeroPhoto] = createSignal<InboxZeroPhoto | null>(null);
@@ -140,6 +135,8 @@ export default function App() {
 
   const refreshAccounts = async () => {
     try {
+      // Backfill missing avatars from Google profile, then fetch
+      await invoke("refresh_account_profiles").catch(() => {});
       const fetched = await invoke<AppAccount[]>("get_accounts");
       setAccounts(fetched);
       if (fetched.length > 0) {
@@ -153,13 +150,32 @@ export default function App() {
 
   const switchAccount = async (accountId: string) => {
     setActiveAccountId(accountId);
+    setAvatarFailed(false);
     await invoke("save_setting", { key: "active_account_id", value: accountId });
-    // Reload inbox for the new account
-    setSplitThreads({});
     setOpenThread(null);
     setActiveMailbox(null);
-    loadAllSplits();
-    prefetchAllMailboxes();
+    const needsSetupNow = await loadSplitsForAccount(accountId);
+    if (needsSetupNow) setNeedsSetup(true);
+  };
+
+  // Load splits for a given account, returning true if setup is needed
+  const loadSplitsForAccount = async (accountId: string): Promise<boolean> => {
+    const saved = await invoke<SplitConfig[]>("get_splits", { accountId });
+    const versionKey = `splits_version:${accountId}`;
+    const savedVersion = await invoke<number | null>("get_setting", { key: versionKey }).catch(() => null);
+    const isStale = saved.length === 0 || savedVersion !== SPLITS_VERSION;
+    if (!isStale) {
+      setSplits(saved);
+      setActiveTab(saved[0].id);
+      setSplitThreads({});
+      loadAllSplits();
+      prefetchAllMailboxes();
+      fetchInboxZeroPhoto();
+      return false;
+    }
+    setSplits([]);
+    setSplitThreads({});
+    return true;
   };
 
   const checkAuth = async () => {
@@ -168,18 +184,10 @@ export default function App() {
       setAuthed(has);
       if (has) {
         await refreshAccounts();
-        const saved = await invoke<SplitConfig[]>("get_splits");
-        const savedVersion = await invoke<number | null>("get_setting", { key: "splits_version" }).catch(() => null);
-        const isStale = saved.length === 0 || savedVersion !== SPLITS_VERSION;
-        if (!isStale) {
-          setSplits(saved);
-          setActiveTab(saved[0].id);
-          loadAllSplits();
-          prefetchAllMailboxes();
-          fetchInboxZeroPhoto();
-        } else {
-          setNeedsSetup(true);
-        }
+        const accountId = activeAccountId();
+        if (!accountId) return;
+        const needsSetupNow = await loadSplitsForAccount(accountId);
+        if (needsSetupNow) setNeedsSetup(true);
       }
     } catch {
       setAuthed(false);
@@ -300,14 +308,24 @@ export default function App() {
   const onAuthComplete = async () => {
     setAuthed(true);
     await refreshAccounts();
+    // Switch to the newly added account (last in the list) and show split setup
+    const accts = accounts();
+    if (accts.length > 0) {
+      const newAcct = accts[accts.length - 1];
+      setActiveAccountId(newAcct.id);
+      await invoke("save_setting", { key: "active_account_id", value: newAcct.id });
+    }
     setNeedsSetup(true);
   };
 
   const onSetupComplete = async (chosen: SplitConfig[]) => {
+    const accountId = activeAccountId();
+    if (!accountId) return;
     setSplits(chosen);
     setNeedsSetup(false);
-    await invoke("save_splits", { splits: chosen }).catch(console.error);
-    await invoke("save_setting", { key: "splits_version", value: SPLITS_VERSION }).catch(console.error);
+    await invoke("save_splits", { accountId, splits: chosen }).catch(console.error);
+    const versionKey = `splits_version:${accountId}`;
+    await invoke("save_setting", { key: versionKey, value: SPLITS_VERSION }).catch(console.error);
     if (chosen.length > 0) {
       setActiveTab(chosen[0].id);
       loadAllSplits();
@@ -587,7 +605,7 @@ export default function App() {
           : accs.filter((a) => a.id !== activeAccountId())[idx - 1];
         if (target && target.id !== activeAccountId()) {
           switchAccount(target.id);
-          setShowAccountSwitcher(false);
+          setShowAccountPicker(false);
         }
       }
       return;
@@ -688,7 +706,14 @@ export default function App() {
     };
     document.addEventListener("visibilitychange", handleVisibility);
 
+    // Periodic refresh every 60s so inbox stays current even if backend sync stalls
+    const refreshInterval = setInterval(() => {
+      loadAllSplits();
+      prefetchAllMailboxes();
+    }, 30_000);
+
     onCleanup(() => {
+      clearInterval(refreshInterval);
       unlistenPromise.then((fn) => fn());
       document.removeEventListener("visibilitychange", handleVisibility);
     });
@@ -703,7 +728,11 @@ export default function App() {
       <Onboarding onComplete={onAuthComplete} />
     }>
     <Show when={!needsSetup()} fallback={
-      <SplitSetup onComplete={onSetupComplete} />
+      <SplitSetup
+        onComplete={onSetupComplete}
+        currentSplits={splits()}
+        onCancel={splits().length > 0 ? () => setNeedsSetup(false) : undefined}
+      />
     }>
     <div class="h-screen w-screen text-zinc-900 flex overflow-hidden relative">
       {/* ── Inbox-zero full-bleed background ── */}
@@ -732,55 +761,29 @@ export default function App() {
 
         {/* Border starts below traffic lights, runs to bottom */}
         <div class={`flex-1 w-full flex flex-col items-center ${isInboxZero() ? "" : "border-r border-zinc-200/60"}`}>
-          {/* Account avatar — click to reveal other accounts below */}
-          <div class="mt-1 flex flex-col items-center space-y-1.5">
-            {(() => {
-              const active = () => accounts().find((a) => a.id === activeAccountId());
-              return (
-                <div
-                  class={`w-8 h-8 rounded-full border flex items-center justify-center text-[11px] font-medium cursor-pointer transition-colors ${
-                    active() ? getAccountRing(accounts(), active()!.id, isInboxZero()) : "border-zinc-200"
-                  } ${isInboxZero() ? "text-white/70" : "text-zinc-500"}`}
-                  title={active()?.email}
-                  onClick={() => {
-                    if (accounts().length > 1) setShowAccountSwitcher(!showAccountSwitcher());
-                  }}
-                >
-                  {active() ? getInitials(active()!) : "?"}
-                </div>
-              );
-            })()}
-            {/* Other accounts — slide down below active avatar */}
-            <Show when={showAccountSwitcher()}>
-              <div
-                class="fixed inset-0 z-40"
-                onClick={() => setShowAccountSwitcher(false)}
-              />
-              <div class="relative z-50 flex flex-col items-center space-y-1.5">
-                <For each={accounts().filter((a) => a.id !== activeAccountId())}>
-                  {(account, i) => (
-                    <div
-                      class={`w-8 h-8 rounded-full border flex items-center justify-center text-[11px] font-medium cursor-pointer transition-colors relative group ${
-                        getAccountRing(accounts(), account.id, isInboxZero())
-                      } ${isInboxZero() ? "text-white/70" : "text-zinc-500"}`}
-                      title={account.email}
-                      onClick={() => {
-                        switchAccount(account.id);
-                        setShowAccountSwitcher(false);
-                      }}
-                    >
-                      {getInitials(account)}
-                      {/* Shortcut hint on hover */}
-                      <span class={`absolute left-10 whitespace-nowrap text-[10px] font-mono opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none ${
-                        isInboxZero() ? "text-white/60" : "text-zinc-400"
-                      }`}>
-                        ⌃{i() + 2}
-                      </span>
-                    </div>
-                  )}
-                </For>
-              </div>
-            </Show>
+          {/* Account switcher — show active avatar, click to expand picker */}
+          <div class="mt-1 flex flex-col items-center">
+            <div
+              class={`w-8 h-8 rounded-full overflow-hidden border flex items-center justify-center text-[11px] font-medium cursor-pointer transition-colors ${
+                isInboxZero()
+                  ? "border-white text-white bg-white/20"
+                  : "border-zinc-800 text-zinc-800 bg-zinc-100"
+              }`}
+              title={activeAccount()?.email ?? "Switch account"}
+              onClick={() => setShowAccountPicker((v) => !v)}
+            >
+              <Show when={activeAccount()?.avatarUrl && !avatarFailed()}>
+                <img
+                  src={activeAccount()!.avatarUrl!}
+                  alt=""
+                  class="w-full h-full object-cover"
+                  onError={() => setAvatarFailed(true)}
+                />
+              </Show>
+              <Show when={activeAccount() && (!activeAccount()?.avatarUrl || avatarFailed())}>
+                <span>{String(getInitials(activeAccount()!))}</span>
+              </Show>
+            </div>
           </div>
           {/* Mailbox shortcuts — visible on sidebar hover */}
           <div class="mt-3 flex flex-col items-center space-y-3 opacity-0 group-hover/sidebar:opacity-100 transition-opacity"
@@ -813,11 +816,11 @@ export default function App() {
                 : [{ id: "inbox", label: "Inbox", gmailLabelId: undefined as string | undefined, query: undefined as string | undefined }]
               }>
                 {(tab, i) => {
-                  const count = () => unreadCounts()[tab.id] ?? 0;
+                  const count = () => threadCounts()[tab.id] ?? 0;
                   return (
                     <button
                       onClick={() => loadSplit(tab.id)}
-                      class={`relative py-2.5 text-[13px] transition-colors ${i() === 0 ? "pr-3" : "px-3"} ${
+                      class={`relative py-2.5 text-[14px] transition-colors ${i() === 0 ? "pr-3" : "px-3"} ${
                         activeTab() === tab.id
                           ? isInboxZero() ? "text-white font-medium" : "text-zinc-900 font-medium"
                           : isInboxZero() ? "text-white/60 hover:text-white/80" : "text-zinc-400 hover:text-zinc-600"
@@ -825,7 +828,7 @@ export default function App() {
                     >
                       {tab.label}
                       <Show when={count() > 0}>
-                        <span class={`ml-1.5 text-[11px] tabular-nums ${
+                        <span class={`ml-1.5 text-[12px] tabular-nums ${
                           isInboxZero()
                             ? activeTab() === tab.id ? "text-white/70" : "text-white/50"
                             : activeTab() === tab.id ? "text-zinc-500" : "text-zinc-400"
@@ -897,7 +900,16 @@ export default function App() {
             }}
           </Show>
           }>
-            <Settings onBack={() => setShowSettings(false)} onAccountsChanged={refreshAccounts} />
+            <Settings
+              onBack={() => setShowSettings(false)}
+              onAccountsChanged={refreshAccounts}
+              onNewAccount={async (accountId) => {
+                setActiveAccountId(accountId);
+                await invoke("save_setting", { key: "active_account_id", value: accountId });
+                setShowSettings(false);
+                setNeedsSetup(true);
+              }}
+            />
           </Show>
         </div>
       </div>
@@ -930,6 +942,43 @@ export default function App() {
         }}
       </Show>
     </div>
+
+    {/* Account picker dropdown — rendered outside sidebar to avoid overflow clipping */}
+    <Show when={showAccountPicker()}>
+      <div class="fixed inset-0 z-[100]" onClick={() => setShowAccountPicker(false)} />
+      <div class="fixed left-[58px] top-[52px] z-[101] bg-zinc-800 rounded-lg shadow-xl border border-zinc-700 py-2 w-64">
+        <div class="px-3 py-1.5 text-[11px] text-zinc-400 uppercase tracking-wider">Switch account</div>
+        <For each={accounts()}>
+          {(account) => {
+            const isActive = () => account.id === activeAccountId();
+            return (
+              <button
+                class={`w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors cursor-pointer ${
+                  isActive() ? "bg-zinc-700/50" : "hover:bg-zinc-700/30"
+                }`}
+                onClick={() => {
+                  if (!isActive()) switchAccount(account.id);
+                  setShowAccountPicker(false);
+                }}
+              >
+                <div class={`w-8 h-8 rounded-full overflow-hidden border flex-shrink-0 flex items-center justify-center text-[11px] font-medium ${
+                  isActive() ? "border-white/60 text-white" : "border-zinc-500 text-zinc-400"
+                }`}>
+                  {account.avatarUrl
+                    ? <img src={account.avatarUrl} alt="" class="w-full h-full object-cover" onError={(e) => { (e.currentTarget as HTMLImageElement).replaceWith(document.createTextNode(getInitials(account))); }} />
+                    : getInitials(account)
+                  }
+                </div>
+                <span class={`text-[13px] truncate ${isActive() ? "text-white" : "text-zinc-300"}`}>
+                  {account.email}
+                </span>
+              </button>
+            );
+          }}
+        </For>
+      </div>
+    </Show>
+
     </Show>
     </Show>
     </Show>

@@ -4,20 +4,14 @@ use crate::error::Error;
 use crate::integrations::gmail::client::{GmailClient, GmailLabel};
 use crate::integrations::gmail::oauth;
 use crate::state::AppState;
+use super::inbox::resolve_account_id;
 
 /// Fetch all labels from the user's Gmail account.
 #[tauri::command]
 pub async fn list_labels(state: State<'_, AppState>) -> Result<Vec<GmailLabel>, Error> {
     let account_id = {
         let conn = state.db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
-        let id: String = conn
-            .query_row(
-                "SELECT id FROM accounts WHERE is_active = 1 ORDER BY created_at ASC LIMIT 1",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(|_| Error::Auth("No active account. Please sign in.".into()))?;
-        id
+        resolve_account_id(&conn)?
     };
 
     let token = oauth::get_valid_token(&state.db, &account_id).await?;
