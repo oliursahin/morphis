@@ -22,6 +22,7 @@ interface ThreadViewProps {
   subject: string;
   onBack: () => void;
   replyOpen?: boolean;
+  replyAll?: boolean;
   onReplyOpen?: () => void;
   onReplyClose?: () => void;
 }
@@ -38,6 +39,9 @@ export default function ThreadView(props: ThreadViewProps) {
   const [showCcBcc, setShowCcBcc] = createSignal(false);
   const [sending, setSending] = createSignal(false);
   const [sendError, setSendError] = createSignal<string | null>(null);
+  const [showSignature, setShowSignature] = createSignal(false);
+  const [signature, setSignature] = createSignal("Sent with Memphis · morphism.me");
+  const [signatureEnabled, setSignatureEnabled] = createSignal(true);
   let threadContentRef: HTMLDivElement | undefined;
 
   const fetchThread = (id: string) => {
@@ -76,16 +80,30 @@ export default function ThreadView(props: ThreadViewProps) {
     fetchThread(id);
   });
 
-  // Pre-fill reply To when reply opens
+  // Pre-fill reply To when reply opens & scroll thread to bottom
   createEffect(() => {
     if (props.replyOpen) {
       const msg = lastMsg();
       if (msg) {
         setReplyTo(msg.fromEmail);
-        setReplyCc(msg.cc || "");
+        if (props.replyAll) {
+          setReplyCc(msg.cc || "");
+          setShowCcBcc(!!(msg.cc));
+        } else {
+          setReplyCc("");
+          setShowCcBcc(false);
+        }
         setReplyBcc("");
-        setShowCcBcc(!!(msg.cc));
       }
+      // Scroll thread content to bottom so the last message is visible
+      const scrollToBottom = () => {
+        if (threadContentRef) {
+          threadContentRef.scrollTop = threadContentRef.scrollHeight;
+        }
+      };
+      setTimeout(scrollToBottom, 50);
+      setTimeout(scrollToBottom, 300);
+      setTimeout(scrollToBottom, 800);
     }
   });
 
@@ -114,7 +132,9 @@ export default function ThreadView(props: ThreadViewProps) {
       ? props.subject
       : `Re: ${props.subject}`;
 
-    const sentBody = replyBody();
+    const sentBody = signatureEnabled() && signature().trim()
+      ? `${replyBody()}\n\n---\n${signature()}`
+      : replyBody();
     const sentTo = replyTo();
     const sentCc = replyCc();
 
@@ -235,40 +255,63 @@ export default function ThreadView(props: ThreadViewProps) {
         </div>
       </div>
 
-      {/* Thread content — scrollable, shrinks when reply is open */}
-      <div
-        ref={threadContentRef}
-        class={`overflow-y-auto px-20 ${
-          props.replyOpen ? "flex-shrink-1 min-h-0" : "flex-1"
-        }`}
-        style={props.replyOpen ? { "max-height": "40%", "flex": "0 1 40%" } : {}}
-      >
-        <Show when={!loading()} fallback={
-          <div class="flex items-center justify-center h-32 text-[13px] text-zinc-400">Loading messages...</div>
-        }>
-          <Show when={!error()} fallback={
-            <div class="flex items-center justify-center h-32 text-[13px] text-red-500">{error()}</div>
+      {/* Thread content + reply wrapped together when reply is open */}
+      <Show when={props.replyOpen} fallback={
+        <div ref={threadContentRef} class="overflow-y-auto px-20 flex-1">
+          <Show when={!loading()} fallback={
+            <div class="flex items-center justify-center h-32 text-[13px] text-zinc-400">Loading messages...</div>
           }>
-            <div class="space-y-5 pb-4">
-              <For each={messages()}>
-                {(msg) => (
-                  <MessageBubble
-                    message={msg}
-                    isCollapsed={collapsed().has(msg.id)}
-                    onToggle={() => toggleCollapse(msg.id)}
-                  />
-                )}
-              </For>
-            </div>
+            <Show when={!error()} fallback={
+              <div class="flex items-center justify-center h-32 text-[13px] text-red-500">{error()}</div>
+            }>
+              <div class="space-y-5 pb-4">
+                <For each={messages()}>
+                  {(msg) => (
+                    <MessageBubble
+                      message={msg}
+                      isCollapsed={collapsed().has(msg.id)}
+                      onToggle={() => toggleCollapse(msg.id)}
+                    />
+                  )}
+                </For>
+              </div>
+            </Show>
           </Show>
-        </Show>
-      </div>
+        </div>
+      }>
+        <div class="flex-1 min-h-0 flex flex-col mx-20 border border-zinc-200 rounded-lg">
+          {/* Thread content — scrollable, shrinks when reply is open */}
+          <div
+            ref={threadContentRef}
+            class="overflow-y-auto px-5 flex-shrink-0"
+            style={{ "max-height": "200px" }}
+          >
+            <Show when={!loading()} fallback={
+              <div class="flex items-center justify-center h-32 text-[13px] text-zinc-400">Loading messages...</div>
+            }>
+              <Show when={!error()} fallback={
+                <div class="flex items-center justify-center h-32 text-[13px] text-red-500">{error()}</div>
+              }>
+                <div class="space-y-5 pb-4 pt-4">
+                  <For each={messages()}>
+                    {(msg) => (
+                      <MessageBubble
+                        message={msg}
+                        isCollapsed={collapsed().has(msg.id)}
+                        onToggle={() => toggleCollapse(msg.id)}
+                      />
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </Show>
+          </div>
 
-      {/* Reply area — takes priority when open */}
-      <Show when={props.replyOpen && lastMsg()}>
-        <div class="flex-1 min-h-0 flex flex-col">
-          <div class="flex-1 min-h-0 flex flex-col px-20 py-4">
-            {/* Reply header with To field and expand chevron for CC/BCC */}
+          {/* Reply area */}
+          <Show when={lastMsg()}>
+            <div class="flex-1 min-h-0 flex flex-col">
+              <div class="flex-1 min-h-0 flex flex-col px-5 py-4">
+                {/* Reply header with To field and expand chevron for CC/BCC */}
             <div class="flex-shrink-0 space-y-2 mb-3">
               {/* To row */}
               <div class="flex items-center gap-2">
@@ -296,7 +339,8 @@ export default function ThreadView(props: ThreadViewProps) {
                   type="text"
                   value={replyTo()}
                   onInput={(e) => setReplyTo(e.currentTarget.value)}
-                  class="flex-1 text-[13px] text-zinc-700 bg-transparent outline-none placeholder:text-zinc-400"
+                  size={Math.max(replyTo().length || 18, 18)}
+                  class="text-[13px] text-zinc-700 bg-transparent outline-none placeholder:text-zinc-400"
                   placeholder="recipient@email.com"
                 />
                 <button
@@ -365,10 +409,34 @@ export default function ThreadView(props: ThreadViewProps) {
 
             {/* Signature preview */}
             <div class="flex-shrink-0 pt-2">
-              <div class="text-[13px] text-zinc-400 leading-relaxed">
-                ---<br />
-                Sent with Memphis
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowSignature((v) => !v)}
+                  class="text-[13px] text-zinc-400 leading-relaxed hover:text-zinc-500 transition-colors cursor-pointer"
+                >
+                  ---
+                </button>
+                <Show when={showSignature()}>
+                  <button
+                    type="button"
+                    onClick={() => setSignatureEnabled((v) => !v)}
+                    class={`text-[11px] transition-colors ${signatureEnabled() ? "text-zinc-400 hover:text-red-400" : "text-red-400 hover:text-zinc-400"}`}
+                    title={signatureEnabled() ? "Remove signature" : "Add signature"}
+                  >
+                    {signatureEnabled() ? "remove" : "add back"}
+                  </button>
+                </Show>
               </div>
+              <Show when={showSignature() && signatureEnabled()}>
+                <input
+                  type="text"
+                  value={signature()}
+                  onInput={(e) => setSignature(e.currentTarget.value)}
+                  class="w-full text-[13px] text-zinc-400 leading-relaxed bg-transparent outline-none placeholder:text-zinc-300"
+                  placeholder="Your signature..."
+                />
+              </Show>
             </div>
 
             {/* Footer */}
@@ -401,7 +469,9 @@ export default function ThreadView(props: ThreadViewProps) {
                 </button>
               </div>
             </div>
-          </div>
+              </div>
+            </div>
+          </Show>
         </div>
       </Show>
 
@@ -530,7 +600,7 @@ function EmailBody(props: { html: string }) {
     doc.open();
     doc.write(`<!DOCTYPE html>
 <html><head>
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src https: data:;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src https: data:;">
 <style>
   * { box-sizing: border-box; }
   body {
@@ -555,6 +625,17 @@ function EmailBody(props: { html: string }) {
     setTimeout(resizeToContent, 1500);
 
     if (doc.body) {
+      doc.body.addEventListener("click", (e) => {
+        const anchor = (e.target as HTMLElement).closest("a");
+        if (anchor) {
+          e.preventDefault();
+          const href = anchor.getAttribute("href");
+          if (href && (href.startsWith("http://") || href.startsWith("https://") || href.startsWith("mailto:"))) {
+            import("@tauri-apps/plugin-opener").then(({ openUrl }) => openUrl(href));
+          }
+        }
+      });
+
       doc.body.querySelectorAll("img").forEach((img) => {
         if (img.src.startsWith("cid:")) {
           img.remove();
@@ -569,7 +650,7 @@ function EmailBody(props: { html: string }) {
   return (
     <iframe
       ref={iframeRef}
-      sandbox="allow-same-origin"
+      sandbox="allow-same-origin allow-scripts"
       style={{ width: "100%", height: `${height()}px`, border: "none", display: "block" }}
       title="Email content"
     />
