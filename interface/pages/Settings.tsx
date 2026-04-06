@@ -115,13 +115,14 @@ function AccountsSection(props: { onAccountsChanged?: () => void; onNewAccount?:
   const addAccount = async () => {
     setAdding(true);
     try {
+      const beforeIds = new Set(accounts().map((a) => a.id));
       await invoke("start_oauth_flow");
       await fetchAccounts();
       props.onAccountsChanged?.();
-      // Trigger split setup for the newly added account
-      const accts = accounts();
-      if (accts.length > 0) {
-        props.onNewAccount?.(accts[accts.length - 1].id);
+      // Trigger split setup only for a genuinely new account
+      const newAccount = accounts().find((a) => !beforeIds.has(a.id));
+      if (newAccount) {
+        props.onNewAccount?.(newAccount.id);
       }
     } catch (e) {
       console.error("Failed to add account:", e);

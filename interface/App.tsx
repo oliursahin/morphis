@@ -173,6 +173,8 @@ export default function App() {
       fetchInboxZeroPhoto();
       return false;
     }
+    setSplits([]);
+    setSplitThreads({});
     return true;
   };
 
