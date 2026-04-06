@@ -6,9 +6,10 @@ interface ComposeViewProps {
   initialSubject?: string;
   initialTo?: string;
   initialBody?: string;
+  initialBodyHtml?: string;
   initialCc?: string;
   initialBcc?: string;
-  onDraftSaved?: (draft: { id: string; subject: string; to: string; snippet: string; body: string; cc?: string; bcc?: string }) => void;
+  onDraftSaved?: (draft: { id: string; subject: string; to: string; snippet: string; body: string; bodyHtml: string; cc?: string; bcc?: string }) => void;
   onSent?: () => void;
 }
 
@@ -48,17 +49,22 @@ export default function ComposeView(props: ComposeViewProps) {
   const [linkUrl, setLinkUrl] = createSignal("");
   const [draftId, setDraftId] = createSignal<string | null>(null);
   const [draftStatus, setDraftStatus] = createSignal<"" | "saving" | "saved">("");
+  const [bodyEmpty, setBodyEmpty] = createSignal(!(props.initialBody || props.initialBodyHtml));
   let savedRange: Range | null = null;
   let saveTimer: number | undefined;
 
   let editorRef: HTMLDivElement | undefined;
 
-  const getBodyText = () => {
+  const getBodyHtml = () => {
     if (!editorRef) return "";
-    // Convert HTML to plain text for sending
     const html = editorRef.innerHTML;
     if (!html || html === "<br>" || html === "<div><br></div>") return "";
-    // Create temp element to extract text
+    return html;
+  };
+
+  const getBodyText = () => {
+    const html = getBodyHtml();
+    if (!html) return "";
     const tmp = document.createElement("div");
     tmp.innerHTML = html;
     return tmp.innerText || "";
@@ -70,12 +76,14 @@ export default function ComposeView(props: ComposeViewProps) {
   // Update local draft in the split immediately
   const updateLocalDraft = () => {
     const bodyText = getBodyText();
+    const bodyHtml = getBodyHtml();
     props.onDraftSaved?.({
       id: draftId() || localDraftId,
       subject: subject() || "(no subject)",
       to: to().trim() || "Me",
       snippet: bodyText.slice(0, 100),
       body: bodyText,
+      bodyHtml,
       cc: cc().trim() || undefined,
       bcc: bcc().trim() || undefined,
     });
@@ -96,6 +104,7 @@ export default function ComposeView(props: ComposeViewProps) {
         bcc: bcc().trim() || null,
         subject: subject(),
         body: bodyText,
+        bodyHtml: getBodyHtml() || null,
       });
       setDraftId(id);
       setDraftStatus("saved");
@@ -108,6 +117,7 @@ export default function ComposeView(props: ComposeViewProps) {
   const scheduleSave = () => {
     if (saveTimer) clearTimeout(saveTimer);
     setDraftStatus("");
+    setBodyEmpty(!getBodyText().trim());
     // Show locally immediately
     updateLocalDraft();
     // Sync to Gmail after 2s
@@ -124,9 +134,17 @@ export default function ComposeView(props: ComposeViewProps) {
     setSending(true);
     setSendError(null);
 
-    const sentBody = signatureEnabled() && signature().trim()
+    const hasSig = signatureEnabled() && signature().trim();
+    const sentBody = hasSig
       ? `${bodyText}\n\n---\n${signature()}`
       : bodyText;
+
+    const rawHtml = getBodyHtml();
+    const sentHtml = rawHtml
+      ? hasSig
+        ? `${rawHtml}<br><br><hr style="border:none;border-top:1px solid #e4e4e7"><p style="color:#71717a">${signature().replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`
+        : rawHtml
+      : null;
 
     try {
       // Delete the draft if one was saved, since we're sending
@@ -141,6 +159,7 @@ export default function ComposeView(props: ComposeViewProps) {
         bcc: bcc().trim() || null,
         subject: subject(),
         body: sentBody,
+        bodyHtml: sentHtml,
       });
       props.onSent?.();
       props.onClose();
@@ -218,16 +237,25 @@ export default function ComposeView(props: ComposeViewProps) {
 
   onMount(() => {
     document.addEventListener("selectionchange", updateToolbar);
-    // Restore body from previous draft if reopening
-    if (props.initialBody && editorRef) {
-      editorRef.innerText = props.initialBody;
+    // Restore body from previous draft if reopening (prefer HTML to preserve formatting)
+    if (editorRef) {
+      if (props.initialBodyHtml) {
+        editorRef.innerHTML = props.initialBodyHtml;
+      } else if (props.initialBody) {
+        editorRef.innerText = props.initialBody;
+      }
+      editorRef.classList.toggle("is-empty", !getBodyHtml());
     }
     // Show draft in split immediately
     updateLocalDraft();
   });
   onCleanup(() => {
     document.removeEventListener("selectionchange", updateToolbar);
-    if (saveTimer) clearTimeout(saveTimer);
+    // Flush any pending draft save instead of discarding it
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveDraftToGmail();
+    }
   });
 
   return (
@@ -318,7 +346,10 @@ export default function ComposeView(props: ComposeViewProps) {
               autocapitalize="off"
               spellcheck={false}
               data-placeholder="Write your message..."
-              onInput={scheduleSave}
+              onInput={() => {
+                editorRef?.classList.toggle("is-empty", !getBodyHtml());
+                scheduleSave();
+              }}
               onKeyDown={(e) => {
                 if (e.key === "Escape") {
                   e.preventDefault();
@@ -326,7 +357,7 @@ export default function ComposeView(props: ComposeViewProps) {
                   props.onClose();
                 }
               }}
-              class="compose-editor w-full min-h-[240px] text-[14px] text-zinc-800 leading-[1.7] outline-none"
+              class={`compose-editor w-full min-h-[240px] text-[14px] text-zinc-800 leading-[1.7] outline-none${bodyEmpty() ? " is-empty" : ""}`}
               style={{
                 "word-break": "break-word",
                 "overflow-wrap": "break-word",
@@ -479,7 +510,7 @@ export default function ComposeView(props: ComposeViewProps) {
             <div class="flex-1" />
             <button
               onClick={handleSend}
-              disabled={sending() || !to().trim()}
+              disabled={sending() || !to().trim() || bodyEmpty()}
               class="px-3 py-1 rounded-md border border-zinc-200 text-[12px] text-zinc-500 hover:text-zinc-800 hover:border-zinc-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed font-medium"
             >
               {sending() ? "Sending..." : "Send"}

@@ -14,7 +14,7 @@ body {
 }
 
 /* Compose editor — contenteditable */
-.compose-editor:empty:before {
+.compose-editor.is-empty:before {
   content: attr(data-placeholder);
   color: #a1a1aa;
   pointer-events: none;
