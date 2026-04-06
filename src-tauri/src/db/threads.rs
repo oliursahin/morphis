@@ -67,13 +67,14 @@ pub fn delete_cached_thread(
 /// Update label_ids and derived flags for a cached thread (optimistic update).
 pub fn update_cached_labels(
     conn: &Connection,
+    account_id: &str,
     provider_thread_id: &str,
     add_labels: &[&str],
     remove_labels: &[&str],
 ) -> Result<(), Error> {
     let current_json: String = match conn.query_row(
-        "SELECT label_ids FROM threads WHERE provider_thread_id = ?1",
-        rusqlite::params![provider_thread_id],
+        "SELECT label_ids FROM threads WHERE account_id = ?1 AND provider_thread_id = ?2",
+        rusqlite::params![account_id, provider_thread_id],
         |row| row.get(0),
     ) {
         Ok(json) => json,
@@ -101,13 +102,14 @@ pub fn update_cached_labels(
     conn.execute(
         "UPDATE threads SET label_ids = ?1, is_read = ?2, is_starred = ?3,
          is_archived = ?4, is_trashed = ?5, updated_at = datetime('now')
-         WHERE provider_thread_id = ?6",
+         WHERE account_id = ?6 AND provider_thread_id = ?7",
         rusqlite::params![
             serde_json::to_string(&labels).unwrap_or_else(|_| "[]".to_string()),
             is_read,
             is_starred,
             is_archived,
             is_trashed,
+            account_id,
             provider_thread_id,
         ],
     )?;

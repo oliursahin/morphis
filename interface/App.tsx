@@ -310,7 +310,9 @@ export default function App() {
       const allThreads = await invoke<ThreadRow[]>("list_inbox_cached");
 
       if (allThreads.length === 0) {
-        // Cache empty — initial sync pending. Keep loading state.
+        // Cache empty — could be initial sync or genuinely empty inbox.
+        // Clear loading so the UI shows empty splits instead of infinite spinner.
+        setLoadingSplits(new Set<string>());
         return;
       }
 

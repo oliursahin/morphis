@@ -375,7 +375,8 @@ pub async fn archive_thread(
     // Optimistic cache update
     {
         let conn = state.db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
-        let _ = crate::db::threads::update_cached_labels(&conn, &thread_id, &[], &["INBOX"]);
+        let account_id = resolve_account_id(&conn)?;
+        let _ = crate::db::threads::update_cached_labels(&conn, &account_id, &thread_id, &[], &["INBOX"]);
     }
     let client = get_gmail_client(&state).await?;
     client.modify_thread(&thread_id, &[], &["INBOX"]).await?;
@@ -391,7 +392,8 @@ pub async fn trash_thread(
 ) -> Result<(), Error> {
     {
         let conn = state.db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
-        let _ = crate::db::threads::update_cached_labels(&conn, &thread_id, &["TRASH"], &["INBOX"]);
+        let account_id = resolve_account_id(&conn)?;
+        let _ = crate::db::threads::update_cached_labels(&conn, &account_id, &thread_id, &["TRASH"], &["INBOX"]);
     }
     let client = get_gmail_client(&state).await?;
     client.modify_thread(&thread_id, &["TRASH"], &["INBOX"]).await?;
@@ -407,7 +409,8 @@ pub async fn mark_thread_read(
 ) -> Result<(), Error> {
     {
         let conn = state.db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
-        let _ = crate::db::threads::update_cached_labels(&conn, &thread_id, &[], &["UNREAD"]);
+        let account_id = resolve_account_id(&conn)?;
+        let _ = crate::db::threads::update_cached_labels(&conn, &account_id, &thread_id, &[], &["UNREAD"]);
     }
     let client = get_gmail_client(&state).await?;
     client.modify_thread(&thread_id, &[], &["UNREAD"]).await?;
@@ -423,7 +426,8 @@ pub async fn mark_thread_unread(
 ) -> Result<(), Error> {
     {
         let conn = state.db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
-        let _ = crate::db::threads::update_cached_labels(&conn, &thread_id, &["UNREAD"], &[]);
+        let account_id = resolve_account_id(&conn)?;
+        let _ = crate::db::threads::update_cached_labels(&conn, &account_id, &thread_id, &["UNREAD"], &[]);
     }
     let client = get_gmail_client(&state).await?;
     client.modify_thread(&thread_id, &["UNREAD"], &[]).await?;
@@ -440,10 +444,11 @@ pub async fn star_thread(
 ) -> Result<(), Error> {
     {
         let conn = state.db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
+        let account_id = resolve_account_id(&conn)?;
         if starred {
-            let _ = crate::db::threads::update_cached_labels(&conn, &thread_id, &["STARRED"], &[]);
+            let _ = crate::db::threads::update_cached_labels(&conn, &account_id, &thread_id, &["STARRED"], &[]);
         } else {
-            let _ = crate::db::threads::update_cached_labels(&conn, &thread_id, &[], &["STARRED"]);
+            let _ = crate::db::threads::update_cached_labels(&conn, &account_id, &thread_id, &[], &["STARRED"]);
         }
     }
     let client = get_gmail_client(&state).await?;
@@ -464,7 +469,8 @@ pub async fn spam_thread(
 ) -> Result<(), Error> {
     {
         let conn = state.db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
-        let _ = crate::db::threads::update_cached_labels(&conn, &thread_id, &["SPAM"], &["INBOX"]);
+        let account_id = resolve_account_id(&conn)?;
+        let _ = crate::db::threads::update_cached_labels(&conn, &account_id, &thread_id, &["SPAM"], &["INBOX"]);
     }
     let client = get_gmail_client(&state).await?;
     client.modify_thread(&thread_id, &["SPAM"], &["INBOX"]).await?;
@@ -482,9 +488,10 @@ pub async fn modify_thread_labels(
 ) -> Result<(), Error> {
     {
         let conn = state.db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
+        let account_id = resolve_account_id(&conn)?;
         let add: Vec<&str> = add_label_ids.iter().map(|s| s.as_str()).collect();
         let remove: Vec<&str> = remove_label_ids.iter().map(|s| s.as_str()).collect();
-        let _ = crate::db::threads::update_cached_labels(&conn, &thread_id, &add, &remove);
+        let _ = crate::db::threads::update_cached_labels(&conn, &account_id, &thread_id, &add, &remove);
     }
     let client = get_gmail_client(&state).await?;
     let add: Vec<&str> = add_label_ids.iter().map(|s| s.as_str()).collect();

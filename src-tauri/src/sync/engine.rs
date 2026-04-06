@@ -244,16 +244,22 @@ impl SyncEngine {
 
         let conn = self.db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
 
-        // Check current state to detect changes
-        let current_count: u64 = conn.query_row(
-            "SELECT COUNT(*) FROM threads WHERE account_id = ?1 AND is_calendar = 1",
+        // Check current set to detect changes (not just count — swaps would be missed)
+        let mut stmt = conn.prepare(
+            "SELECT provider_thread_id FROM threads WHERE account_id = ?1 AND is_calendar = 1"
+        )?;
+        let mut current_ids: Vec<String> = stmt.query_map(
             rusqlite::params![account_id],
             |row| row.get(0),
-        ).unwrap_or(0);
+        )?.filter_map(|r| r.ok()).collect();
+        current_ids.sort();
+
+        let mut new_ids = calendar_ids.clone();
+        new_ids.sort();
 
         mark_calendar_threads(&conn, account_id, &calendar_ids)?;
 
-        Ok(calendar_ids.len() as u64 != current_count)
+        Ok(current_ids != new_ids)
     }
 
     /// Fetch thread metadata from Gmail and upsert into SQLite cache.
