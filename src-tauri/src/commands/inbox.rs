@@ -70,6 +70,30 @@ async fn get_gmail_client_with_sender(state: &AppState) -> Result<(GmailClient, 
 }
 
 /// Fetch thread metadata for a list of stubs concurrently, returning ThreadRows.
+async fn fetch_thread_with_retry(
+    client: &GmailClient,
+    thread_id: &str,
+    max_retries: u32,
+) -> Result<crate::integrations::gmail::client::GmailThread, Error> {
+    let mut attempt = 0;
+    loop {
+        match client.get_thread(thread_id).await {
+            Ok(thread) => return Ok(thread),
+            Err(e) => {
+                let is_rate_limit = format!("{e}").contains("429");
+                if is_rate_limit && attempt < max_retries {
+                    attempt += 1;
+                    let delay = std::time::Duration::from_millis(500 * 2u64.pow(attempt - 1));
+                    log::info!("Rate limited fetching thread {thread_id}, retry {attempt}/{max_retries} after {delay:?}");
+                    tokio::time::sleep(delay).await;
+                } else {
+                    return Err(e);
+                }
+            }
+        }
+    }
+}
+
 async fn stubs_to_thread_rows(
     stubs: Vec<ThreadStub>,
     client: &GmailClient,
@@ -80,7 +104,7 @@ async fn stubs_to_thread_rows(
             let client = client.clone();
             async move {
                 let snippet_text = stub.snippet.unwrap_or_default();
-                match client.get_thread(&stub.id).await {
+                match fetch_thread_with_retry(&client, &stub.id, 3).await {
                     Ok(thread) => {
                         let messages = thread.messages.unwrap_or_default();
                         if messages.is_empty() {
@@ -150,9 +174,8 @@ struct EmailParams {
 
 /// Build an RFC 2822 MIME message (multipart/alternative with plain + HTML).
 fn build_rfc2822(params: &EmailParams) -> String {
-    let body_with_sig = format!("{}\n\n---\nSent with Memphis", params.body);
-    let body_plain = body_with_sig.clone();
-    let body_html = body_with_sig
+    let body_plain = params.body.clone();
+    let body_html = params.body
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
@@ -262,7 +285,7 @@ pub async fn list_inbox(
     let stubs_count = stubs.len();
     log::info!("list_inbox: {} thread stubs from Gmail, next_page_token={}", stubs_count, list.next_page_token.as_deref().unwrap_or("none"));
 
-    let threads = stubs_to_thread_rows(stubs, &client, 10).await;
+    let threads = stubs_to_thread_rows(stubs, &client, 4).await;
     log::info!("list_inbox: returning {} threads (dropped {} failed/empty)", threads.len(), stubs_count - threads.len());
 
     Ok(InboxResponse {
@@ -417,7 +440,7 @@ pub async fn search_threads(
     let list = client.list_threads(Some(&query), 10, None, None).await?;
     let stubs = list.threads.unwrap_or_default();
 
-    let threads = stubs_to_thread_rows(stubs, &client, 10).await;
+    let threads = stubs_to_thread_rows(stubs, &client, 4).await;
     Ok(threads)
 }
 
