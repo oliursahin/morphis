@@ -57,7 +57,7 @@ export default function Sidebar(props: SidebarProps) {
           class={`px-10 py-1.5 pb-3 cursor-pointer text-[13px] font-medium ${
             props.activeMailbox() === "drafts"
               ? iz() ? "text-white" : "text-zinc-900"
-              : iz() ? "text-white/60 hover:text-white/80" : "text-zinc-600 hover:text-zinc-800"
+              : iz() ? "text-white/50 hover:text-white/70" : "text-zinc-500 hover:text-zinc-700"
           }`}
         >
           Scratchpad
@@ -79,7 +79,7 @@ export default function Sidebar(props: SidebarProps) {
                     class={`flex items-center justify-between px-7 py-1.5 cursor-pointer text-[13px] font-medium ${
                       isActive()
                         ? iz() ? "text-white" : "text-zinc-900"
-                        : iz() ? "text-white/60 hover:text-white/80" : "text-zinc-600 hover:text-zinc-800"
+                        : iz() ? "text-white/60 hover:text-white/80" : "text-zinc-700 hover:text-zinc-900"
                     }`}
                     onClick={() => {
                       if (!isActive()) props.onSwitchAccount(account.id);
@@ -139,7 +139,7 @@ export default function Sidebar(props: SidebarProps) {
                                 class={`px-4 py-1.5 text-[13px] font-medium cursor-pointer transition-colors ${
                                   props.activeMailbox() === mb.id
                                     ? iz() ? "text-white" : "text-zinc-900"
-                                    : iz() ? "text-zinc-300 hover:text-zinc-100" : "text-zinc-600 hover:text-zinc-900"
+                                    : iz() ? "text-zinc-300 hover:text-zinc-100" : "text-zinc-500 hover:text-zinc-800"
                                 }`}
                               >
                                 {mb.label}
@@ -166,13 +166,13 @@ export default function Sidebar(props: SidebarProps) {
                             class={`flex items-center justify-between pl-10 pr-7 py-1 cursor-pointer text-[13px] font-medium ${
                               isSplitActive()
                                 ? iz() ? "text-white" : "text-zinc-900"
-                                : iz() ? "text-white/60 hover:text-white/80" : "text-zinc-600 hover:text-zinc-800"
+                                : iz() ? "text-white/50 hover:text-white/70" : "text-zinc-500 hover:text-zinc-700"
                             }`}
                           >
                             <span class="truncate">{split.name}</span>
                             <Show when={count() > 0}>
                               <span class={`text-[11px] tabular-nums flex-shrink-0 ${
-                                iz() ? "text-white/50" : "text-zinc-500"
+                                iz() ? "text-white/40" : "text-zinc-400"
                               }`}>
                                 {count()}
                               </span>
