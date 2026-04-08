@@ -198,7 +198,6 @@ function ShortcutsSection() {
     { keys: "E", action: "Archive" },
     { keys: "/", action: "Search" },
     { keys: "⌘ K", action: "Command bar" },
-    { keys: "1 – 9", action: "Switch to split" },
     { keys: "Tab", action: "Next split" },
     { keys: "⇧ Tab", action: "Previous split" },
     { keys: "H", action: "Set reminder" },

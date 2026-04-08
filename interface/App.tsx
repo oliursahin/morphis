@@ -805,14 +805,6 @@ export default function App() {
       return;
     }
 
-    // Number keys 1–9 switch to Nth split
-    if (e.key >= "1" && e.key <= "9" && !e.metaKey && !e.ctrlKey) {
-      const idx = parseInt(e.key) - 1;
-      const sp = splits()[idx];
-      if (sp) { e.preventDefault(); loadSplit(sp.id); }
-      return;
-    }
-
     switch (e.key) {
       case "j": e.preventDefault(); navigateThread(1); break;
       case "k": e.preventDefault(); navigateThread(-1); break;
