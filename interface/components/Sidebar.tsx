@@ -79,7 +79,6 @@ export default function Sidebar(props: SidebarProps) {
         <Show when={props.activeAccount()}>
           {(account) => {
             const prefix = () => account().email.split("@")[0] || account().email;
-            const acctIdx = () => props.accounts().findIndex((a) => a.id === account().id);
             return (
               <div class="mt-2">
                 {/* Account heading with ≡ menu */}
@@ -90,14 +89,7 @@ export default function Sidebar(props: SidebarProps) {
                   onMouseEnter={() => setHoveredAcct(account().id)}
                   onMouseLeave={() => setHoveredAcct((v) => v === account().id ? null : v)}
                 >
-                  <div class="flex items-center gap-1.5">
-                    <span>{prefix()}</span>
-                    <Show when={props.accounts().length > 1}>
-                      <kbd class={`text-[10px] font-mono ${iz() ? "text-white/20" : "text-zinc-300"}`}>
-                        ^{acctIdx() + 1}
-                      </kbd>
-                    </Show>
-                  </div>
+                  <span>{prefix()}</span>
                   <div class="relative">
                     <span
                       on:click={(e: MouseEvent) => { e.stopPropagation(); setMenuTop((e.currentTarget as HTMLElement).getBoundingClientRect().top); setMenuOpenFor((v) => v === account().id ? null : account().id); }}
