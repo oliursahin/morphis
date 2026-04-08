@@ -1,4 +1,5 @@
 import { createSignal, createEffect, For, Show } from "solid-js";
+import { invoke } from "@tauri-apps/api/core";
 import type { AppAccount, MailboxDef } from "../App";
 import type { SplitConfig } from "../pages/SplitSetup";
 
@@ -17,6 +18,7 @@ interface SidebarProps {
   mailboxDefs: readonly MailboxDef[];
   onShowSearch: () => void;
   onShowCommandBar: () => void;
+  onShowSettings: () => void;
   isInboxZero: () => boolean;
   onCollapse: () => void;
 }
@@ -25,10 +27,30 @@ export default function Sidebar(props: SidebarProps) {
   const iz = () => props.isInboxZero();
   const [menuOpenFor, setMenuOpenFor] = createSignal<string | null>(null);
   const [menuTop, setMenuTop] = createSignal(0);
+  const [editing, setEditing] = createSignal(false);
+  const [workspaceName, setWorkspaceName] = createSignal<string | null>(null);
 
   // Close dropdown when navigating away (e.g. via keyboard shortcut)
   createEffect(() => { props.activeMailbox(); setMenuOpenFor(null); });
   const [hoveredAcct, setHoveredAcct] = createSignal<string | null>(null);
+
+  // Load saved workspace name
+  createEffect(() => {
+    const id = props.activeAccountId();
+    if (!id) return;
+    invoke<string | null>("load_setting", { key: `workspace_name_${id}` })
+      .then((v) => setWorkspaceName(v))
+      .catch(() => setWorkspaceName(null));
+  });
+
+  const saveWorkspaceName = (name: string) => {
+    const id = props.activeAccountId();
+    if (!id) return;
+    const trimmed = name.trim();
+    const val = trimmed || null;
+    setWorkspaceName(val);
+    invoke("save_setting", { key: `workspace_name_${id}`, value: val ?? "" }).catch(console.error);
+  };
 
   return (
     <aside
@@ -51,18 +73,6 @@ export default function Sidebar(props: SidebarProps) {
 
       <div class="flex-1 w-full flex flex-col overflow-y-auto">
 
-        {/* ── Scratchpad (commented out) ── */}
-        {/* <div
-          onClick={() => { props.onOpenMailbox("drafts"); setMenuOpenFor(null); }}
-          class={`px-10 py-1.5 pb-3 cursor-pointer text-[13px] font-medium ${
-            props.activeMailbox() === "drafts"
-              ? iz() ? "text-white" : "text-zinc-900"
-              : iz() ? "text-white/50 hover:text-white/70" : "text-zinc-500 hover:text-zinc-700"
-          }`}
-        >
-          Scratchpad
-        </div> */}
-
         {/* ── Morphis ── */}
         <div
           class={`px-10 py-1.5 pb-3 text-[13px] font-medium ${
@@ -78,10 +88,11 @@ export default function Sidebar(props: SidebarProps) {
         {/* ── Active account + splits (single workspace) ── */}
         <Show when={props.activeAccount()}>
           {(account) => {
-            const prefix = () => account().email.split("@")[0] || account().email;
+            const defaultName = () => account().email.split("@")[0] || account().email;
+            const displayName = () => workspaceName() || defaultName();
             return (
               <div class="mt-2">
-                {/* Account heading with ≡ menu */}
+                {/* Workspace heading — click to edit, ≡ for mailbox menu */}
                 <div
                   class={`flex items-center justify-between px-7 py-1.5 text-[13px] font-medium ${
                     iz() ? "text-white" : "text-zinc-900"
@@ -89,7 +100,27 @@ export default function Sidebar(props: SidebarProps) {
                   onMouseEnter={() => setHoveredAcct(account().id)}
                   onMouseLeave={() => setHoveredAcct((v) => v === account().id ? null : v)}
                 >
-                  <span>{prefix()}</span>
+                  <Show when={editing()} fallback={
+                    <span
+                      class="truncate cursor-text"
+                      onDblClick={() => setEditing(true)}
+                    >{displayName()}</span>
+                  }>
+                    <input
+                      type="text"
+                      class={`bg-transparent outline-none border-b text-[13px] font-medium w-full mr-2 ${
+                        iz() ? "text-white border-white/30" : "text-zinc-900 border-zinc-300"
+                      }`}
+                      value={displayName()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { saveWorkspaceName(e.currentTarget.value); setEditing(false); }
+                        if (e.key === "Escape") setEditing(false);
+                        e.stopPropagation();
+                      }}
+                      onBlur={(e) => { saveWorkspaceName(e.currentTarget.value); setEditing(false); }}
+                      ref={(el) => setTimeout(() => { el.focus(); el.select(); }, 0)}
+                    />
+                  </Show>
                   <div class="relative">
                     <span
                       on:click={(e: MouseEvent) => { e.stopPropagation(); setMenuTop((e.currentTarget as HTMLElement).getBoundingClientRect().top); setMenuOpenFor((v) => v === account().id ? null : account().id); }}
@@ -106,7 +137,7 @@ export default function Sidebar(props: SidebarProps) {
                       >
                         <For each={props.mailboxDefs}>
                           {(mb) => {
-                            const shortcutKey: Record<string, string> = { done: "E", sent: "T", drafts: "D", bin: "B", spam: "!", starred: "S", all: "A" };
+                            const shortcutKey: Record<string, string> = { done: "E", sent: "T", drafts: "D", bin: "B", spam: "!", starred: "S" };
                             return (
                               <div
                                 on:click={(e: MouseEvent) => { e.stopPropagation(); props.onOpenMailbox(mb.id); setMenuOpenFor(null); }}
@@ -163,6 +194,52 @@ export default function Sidebar(props: SidebarProps) {
         </Show>
 
         <div class="flex-1" />
+      </div>
+
+      {/* ── Bottom bar — Search, Command bar, Settings ── */}
+      <div class={`flex-shrink-0 px-5 py-3 space-y-0.5 border-t ${iz() ? "border-white/10" : "border-zinc-200"}`}>
+        <div
+          onClick={props.onShowSearch}
+          class={`flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer text-[13px] ${
+            iz() ? "text-white/50 hover:text-white/70 hover:bg-white/5" : "text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100"
+          }`}
+        >
+          <div class="flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <span>Search</span>
+          </div>
+          <kbd class={`text-[10px] font-mono ${iz() ? "text-white/25" : "text-zinc-400"}`}>/</kbd>
+        </div>
+        <div
+          onClick={props.onShowCommandBar}
+          class={`flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer text-[13px] ${
+            iz() ? "text-white/50 hover:text-white/70 hover:bg-white/5" : "text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100"
+          }`}
+        >
+          <div class="flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3H6a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3V6a3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3h12a3 3 0 0 0 3-3 3 3 0 0 0-3-3z" />
+            </svg>
+            <span>Command</span>
+          </div>
+          <kbd class={`text-[10px] font-mono ${iz() ? "text-white/25" : "text-zinc-400"}`}>⌘K</kbd>
+        </div>
+        <div
+          onClick={props.onShowSettings}
+          class={`flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer text-[13px] ${
+            iz() ? "text-white/50 hover:text-white/70 hover:bg-white/5" : "text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100"
+          }`}
+        >
+          <div class="flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+            <span>Settings</span>
+          </div>
+        </div>
       </div>
     </aside>
   );
