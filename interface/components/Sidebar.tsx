@@ -174,7 +174,7 @@ export default function Sidebar(props: SidebarProps) {
                   {/* Splits — collapsible per account */}
                   <Show when={!collapsedAccts().has(account.id)}>
                     <For each={isActive() ? props.splits() : (props.allAccountSplits()[account.id] ?? [])}>
-                      {(split) => {
+                      {(split, idx) => {
                         const isSplitActive = () => isActive() && props.activeTab() === split.id && !props.activeMailbox();
                         const count = () => isActive() ? (props.threadCounts()[split.id] ?? 0) : 0;
                         return (
@@ -190,17 +190,44 @@ export default function Sidebar(props: SidebarProps) {
                             }`}
                           >
                             <span class="truncate">{split.name}</span>
-                            <Show when={count() > 0}>
-                              <span class={`text-[11px] tabular-nums flex-shrink-0 ${
-                                iz() ? "text-white/40" : "text-zinc-400"
-                              }`}>
-                                {count()}
-                              </span>
-                            </Show>
+                            <div class="flex items-center gap-2 flex-shrink-0">
+                              <Show when={count() > 0}>
+                                <span class={`text-[11px] tabular-nums ${
+                                  iz() ? "text-white/40" : "text-zinc-400"
+                                }`}>
+                                  {count()}
+                                </span>
+                              </Show>
+                              <kbd class={`text-[10px] font-mono ${iz() ? "text-white/20" : "text-zinc-300"}`}>
+                                {idx() + 1}
+                              </kbd>
+                            </div>
                           </div>
                         );
                       }}
                     </For>
+
+                    {/* Active mailbox — shown inline when navigated to */}
+                    <Show when={isActive() && props.activeMailbox()}>
+                      {(() => {
+                        const mb = () => props.mailboxDefs.find((m) => m.id === props.activeMailbox());
+                        const shortcutKey: Record<string, string> = { done: "E", sent: "T", drafts: "D", bin: "B", spam: "!", starred: "S", all: "A" };
+                        return (
+                          <div
+                            class={`flex items-center justify-between pl-10 pr-7 py-1 text-[13px] font-medium ${
+                              iz() ? "text-white" : "text-zinc-900"
+                            }`}
+                          >
+                            <span class="truncate">{mb()?.label}</span>
+                            <Show when={mb() && shortcutKey[mb()!.id]}>
+                              <kbd class={`text-[10px] font-mono ${iz() ? "text-white/20" : "text-zinc-300"}`}>
+                                G {shortcutKey[mb()!.id]}
+                              </kbd>
+                            </Show>
+                          </div>
+                        );
+                      })()}
+                    </Show>
                   </Show>
                 </>
               );
