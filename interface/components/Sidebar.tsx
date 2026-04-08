@@ -142,18 +142,26 @@ export default function Sidebar(props: SidebarProps) {
                         }`} style={{ left: "14rem", top: `${menuTop()}px` }}
                         >
                           <For each={props.mailboxDefs}>
-                            {(mb) => (
-                              <div
-                                on:click={(e: MouseEvent) => { e.stopPropagation(); if (!isActive()) props.onSwitchAccount(account.id); props.onOpenMailbox(mb.id); setMenuOpenFor(null); }}
-                                class={`px-4 py-1.5 text-[13px] font-medium cursor-pointer transition-colors ${
-                                  props.activeMailbox() === mb.id
-                                    ? iz() ? "text-white" : "text-zinc-900"
-                                    : iz() ? "text-zinc-300 hover:text-zinc-100" : "text-zinc-500 hover:text-zinc-800"
-                                }`}
-                              >
-                                {mb.label}
-                              </div>
-                            )}
+                            {(mb) => {
+                              const shortcutKey: Record<string, string> = { done: "E", sent: "T", drafts: "D", bin: "B", spam: "!", starred: "S", all: "A" };
+                              return (
+                                <div
+                                  on:click={(e: MouseEvent) => { e.stopPropagation(); if (!isActive()) props.onSwitchAccount(account.id); props.onOpenMailbox(mb.id); setMenuOpenFor(null); }}
+                                  class={`flex items-center justify-between px-4 py-1.5 text-[13px] font-medium cursor-pointer transition-colors ${
+                                    props.activeMailbox() === mb.id
+                                      ? iz() ? "text-white" : "text-zinc-900"
+                                      : iz() ? "text-zinc-300 hover:text-zinc-100" : "text-zinc-500 hover:text-zinc-800"
+                                  }`}
+                                >
+                                  <span>{mb.label}</span>
+                                  <Show when={shortcutKey[mb.id]}>
+                                    <kbd class={`text-[10px] font-mono ml-3 ${iz() ? "text-white/30" : "text-zinc-400"}`}>
+                                      G {shortcutKey[mb.id]}
+                                    </kbd>
+                                  </Show>
+                                </div>
+                              );
+                            }}
                           </For>
                         </div>
                       </Show>
