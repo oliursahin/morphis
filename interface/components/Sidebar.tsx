@@ -82,9 +82,6 @@ export default function Sidebar(props: SidebarProps) {
           morphis
         </div>
 
-        {/* ── Thin line ── */}
-        <div class={`mx-7 border-t ${iz() ? "border-white/10" : "border-zinc-200"}`} />
-
         {/* ── Active account + splits (single workspace) ── */}
         <Show when={props.activeAccount()}>
           {(account) => {
