@@ -194,7 +194,7 @@ export default function Sidebar(props: SidebarProps) {
       </div>
 
       {/* ── Bottom bar — Search, Command bar, Settings ── */}
-      <div class={`flex-shrink-0 px-5 py-3 space-y-0.5 border-t ${iz() ? "border-white/10" : "border-zinc-200"}`}>
+      <div class="flex-shrink-0 px-5 py-3 space-y-0.5">
         <div
           onClick={props.onShowSearch}
           class={`flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer text-[13px] ${
