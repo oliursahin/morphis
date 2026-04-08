@@ -198,7 +198,7 @@ export default function Sidebar(props: SidebarProps) {
         <div
           onClick={props.onShowSearch}
           class={`flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer text-[13px] ${
-            iz() ? "text-white/50 hover:text-white/70 hover:bg-white/5" : "text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100"
+            iz() ? "text-white/50 hover:text-white/70" : "text-zinc-500 hover:text-zinc-700"
           }`}
         >
           <span>Search</span>
@@ -207,7 +207,7 @@ export default function Sidebar(props: SidebarProps) {
         <div
           onClick={props.onShowCommandBar}
           class={`flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer text-[13px] ${
-            iz() ? "text-white/50 hover:text-white/70 hover:bg-white/5" : "text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100"
+            iz() ? "text-white/50 hover:text-white/70" : "text-zinc-500 hover:text-zinc-700"
           }`}
         >
           <span>Command</span>
@@ -216,7 +216,7 @@ export default function Sidebar(props: SidebarProps) {
         <div
           onClick={props.onShowSettings}
           class={`flex items-center justify-between px-2 py-1.5 rounded-md cursor-pointer text-[13px] ${
-            iz() ? "text-white/50 hover:text-white/70 hover:bg-white/5" : "text-zinc-500 hover:text-zinc-700 hover:bg-zinc-100"
+            iz() ? "text-white/50 hover:text-white/70" : "text-zinc-500 hover:text-zinc-700"
           }`}
         >
           <span>Settings</span>
