@@ -18,6 +18,7 @@ import Settings from "./pages/Settings";
 import Onboarding from "./pages/Onboarding";
 import SplitSetup from "./pages/SplitSetup";
 import type { SplitConfig } from "./pages/SplitSetup";
+import CalendarTimeline, { CalendarDetailPanel, type CalendarEventDto } from "./pages/CalendarTimeline";
 
 interface InboxZeroPhoto {
   url: string;
@@ -84,7 +85,7 @@ export default function App() {
 
   // True when showing a split with no threads and nothing else open
   const isInboxZero = () =>
-    threads().length === 0 && !loadingInbox() && !openThread() && !showCompose() && !showSettings() && !activeMailbox();
+    threads().length === 0 && !loadingInbox() && !openThread() && !showCompose() && !showSettings() && !activeMailbox() && !showCalendar();
 
   // Derive thread counts reactively from cached data — inbox zero cares about total, not unread
   const threadCounts = () => {
@@ -109,6 +110,9 @@ export default function App() {
   const [inlineReply, setInlineReply] = createSignal(false);
   const [replyAll, setReplyAll] = createSignal(false);
   const [showSettings, setShowSettings] = createSignal(false);
+  const [showCalendar, setShowCalendar] = createSignal(false);
+  const [calendarDate, setCalendarDate] = createSignal(new Date());
+  const [selectedCalendarEvent, setSelectedCalendarEvent] = createSignal<CalendarEventDto | null>(null);
 
   // Auto-update state
   const [updateAvailable, setUpdateAvailable] = createSignal<{ version: string; install: () => Promise<void> } | null>(null);
@@ -358,6 +362,7 @@ export default function App() {
   const loadSplit = (splitId: string) => {
     setActiveTab(splitId);
     setActiveMailbox(null);
+    setShowCalendar(false);
   };
 
   // Unified mailbox prefetch
@@ -387,6 +392,7 @@ export default function App() {
     setOpenThread(null);
     setShowSettings(false);
     setShowCompose(false);
+    setShowCalendar(false);
   };
 
   const openMailbox = (id: string) => {
@@ -720,6 +726,7 @@ export default function App() {
       if (showCommandBar()) { setShowCommandBar(false); return; }
       if (inlineReply()) { setInlineReply(false); setReplyAll(false); return; }
       if (showSettings()) { setShowSettings(false); return; }
+      if (showCalendar()) { setShowCalendar(false); return; }
       if (activeMailbox()) { setActiveMailbox(null); return; }
       if (openThread()) { setOpenThread(null); return; }
       return;
@@ -772,7 +779,23 @@ export default function App() {
       return;
     }
 
+    // Shift+Arrow left/right to navigate calendar days
+    if (showCalendar() && e.shiftKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+      e.preventDefault();
+      const d = new Date(calendarDate());
+      d.setDate(d.getDate() + (e.key === "ArrowLeft" ? -1 : 1));
+      setCalendarDate(d);
+      return;
+    }
+
     if (isInput) return;
+
+    // t to jump to today in calendar view
+    if (showCalendar() && e.key === "t") {
+      e.preventDefault();
+      setCalendarDate(new Date());
+      return;
+    }
     if (showCompose() || showSearch() || showCommandBar()) return;
 
     switch (e.key) {
@@ -950,6 +973,8 @@ export default function App() {
           isInboxZero={isInboxZero}
           onCollapse={() => setSidebarCollapsed(true)}
           allAccountSplits={allAccountSplits}
+          showCalendar={showCalendar}
+          onOpenCalendar={() => { closeAllViews(); setShowCalendar(true); }}
         />
       </Show>
 
@@ -963,11 +988,14 @@ export default function App() {
           openThread={openThread}
           showCompose={showCompose}
           showSettings={showSettings}
+          showCalendar={showCalendar}
+          calendarDate={calendarDate}
           splits={splits}
           mailboxDefs={MAILBOX_DEFS}
           onBack={() => {
             if (showCompose()) { setShowCompose(false); return; }
             if (showSettings()) { setShowSettings(false); return; }
+            if (showCalendar()) { setShowCalendar(false); return; }
             if (openThread()) { setOpenThread(null); setInlineReply(false); setReplyAll(false); return; }
             if (activeMailbox()) { setActiveMailbox(null); return; }
           }}
@@ -978,6 +1006,7 @@ export default function App() {
 
         <div class="flex-1 relative overflow-hidden">
           <Show when={showSettings()} fallback={
+          <Show when={showCalendar()} fallback={
           <Show when={openThread()} fallback={
           <Show when={activeMailbox()} fallback={
           <Show when={showCompose()} fallback={
@@ -1104,6 +1133,9 @@ export default function App() {
             )}
           </Show>
           }>
+            <CalendarTimeline viewDate={calendarDate} selectedEvent={selectedCalendarEvent} setSelectedEvent={setSelectedCalendarEvent} />
+          </Show>
+          }>
             <Settings
               onBack={() => setShowSettings(false)}
               onAccountsChanged={refreshAccounts}
@@ -1117,6 +1149,11 @@ export default function App() {
           </Show>
         </div>
       </div>
+
+      {/* ── Calendar detail panel — spans full height, outside header column ── */}
+      <Show when={showCalendar()}>
+        <CalendarDetailPanel selectedEvent={selectedCalendarEvent} />
+      </Show>
 
       {/* ── Contact sidebar — spans full height, outside header column ── */}
       <Show when={openThread()}>

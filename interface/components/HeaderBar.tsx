@@ -9,6 +9,8 @@ interface HeaderBarProps {
   openThread: () => { id: string; subject: string } | null;
   showCompose: () => boolean;
   showSettings: () => boolean;
+  showCalendar: () => boolean;
+  calendarDate: () => Date;
   splits: () => SplitConfig[];
   mailboxDefs: readonly MailboxDef[];
   onBack: () => void;
@@ -25,21 +27,30 @@ export default function HeaderBar(props: HeaderBarProps) {
     return email.split("@")[0] || email;
   };
 
+  const calendarDateLabel = () => {
+    const d = props.calendarDate();
+    const month = d.toLocaleDateString("en-US", { month: "long" });
+    const day = d.getDate();
+    const weekday = d.toLocaleDateString("en-US", { weekday: "long" });
+    return `${month.toLowerCase()} ${day}, ${weekday.toLowerCase()}`;
+  };
+
   // Current view name (split, mailbox, compose, settings)
   const viewName = () => {
-    if (props.showSettings()) return "Settings";
-    if (props.showCompose()) return "Compose";
+    if (props.showSettings()) return "settings";
+    if (props.showCompose()) return "compose";
+    if (props.showCalendar()) return `calendar/${calendarDateLabel()}`;
     const mailbox = props.activeMailbox();
     if (mailbox) {
       const mbDef = props.mailboxDefs.find((m) => m.id === mailbox);
-      return mbDef?.label ?? mailbox;
+      return (mbDef?.label ?? mailbox).toLowerCase();
     }
     const split = props.splits().find((s) => s.id === props.activeTab());
-    return split?.name ?? "Inbox";
+    return (split?.name ?? "Inbox").toLowerCase();
   };
 
   const thread = () => props.openThread();
-  const hasBack = () => !!thread() || props.showCompose() || props.showSettings();
+  const hasBack = () => !!thread() || props.showCompose() || props.showSettings() || props.showCalendar();
 
   return (
     <div class="flex-shrink-0">
@@ -71,27 +82,38 @@ export default function HeaderBar(props: HeaderBarProps) {
         </Show>
 
         <span class={`text-[14px] truncate ${iz() ? "text-white/60" : "text-zinc-600"}`}>
-          {accountPrefix()}/{viewName()}
+          {props.showCalendar() ? viewName() : `${accountPrefix()}/${viewName()}`}
         </span>
 
-        <Show when={!thread() && !props.showCompose() && !props.showSettings() && !props.activeMailbox()}>
+        <Show when={!thread() && !props.showCompose() && !props.showSettings() && !props.activeMailbox() && !props.showCalendar()}>
           <span class={`ml-3 text-[12px] opacity-60 ${iz() ? "text-white/40" : "text-zinc-500"}`}>
-            <kbd class={`px-1 py-0.5 rounded text-[11px] font-mono ${iz() ? "bg-white/10 text-white/50" : "bg-zinc-100 text-zinc-500"}`}>Tab</kbd> next split
+            <kbd class={`px-1 py-0.5 rounded text-[11px] font-mono ${iz() ? "bg-white/10 text-white/50" : "bg-zinc-100 text-zinc-500"}`}>tab</kbd> next split
           </span>
         </Show>
 
         <div class="flex-1" />
 
+        <Show when={props.showCalendar()}>
+          <span class={`text-[12px] ${iz() ? "text-white/70" : "text-zinc-400"}`}>
+            <kbd class={`px-1.5 py-0.5 rounded text-[11px] font-mono border ${iz() ? "bg-white/10 text-white/70 border-white/20" : "bg-zinc-100 text-zinc-600 border-zinc-200"}`}>shift ←→</kbd>
+            <span class="ml-1">change day</span>
+            <span class="ml-3">
+              <kbd class={`px-1.5 py-0.5 rounded text-[11px] font-mono border ${iz() ? "bg-white/10 text-white/70 border-white/20" : "bg-zinc-100 text-zinc-600 border-zinc-200"}`}>t</kbd>
+              <span class="ml-1">today</span>
+            </span>
+          </span>
+        </Show>
+
         <Show when={thread()}>
           <div class="flex items-center gap-3 opacity-60 mr-4">
             <span class={`text-[12px] ${iz() ? "text-white/40" : "text-zinc-500"}`}>
-              <kbd class={`px-1 py-0.5 rounded text-[11px] font-mono ${iz() ? "bg-white/10 text-white/50" : "bg-zinc-100 text-zinc-500"}`}>R</kbd> reply
+              <kbd class={`px-1 py-0.5 rounded text-[11px] font-mono ${iz() ? "bg-white/10 text-white/50" : "bg-zinc-100 text-zinc-500"}`}>r</kbd> reply
             </span>
             <span class={`text-[12px] ${iz() ? "text-white/40" : "text-zinc-500"}`}>
-              <kbd class={`px-1 py-0.5 rounded text-[11px] font-mono ${iz() ? "bg-white/10 text-white/50" : "bg-zinc-100 text-zinc-500"}`}>E</kbd> archive
+              <kbd class={`px-1 py-0.5 rounded text-[11px] font-mono ${iz() ? "bg-white/10 text-white/50" : "bg-zinc-100 text-zinc-500"}`}>e</kbd> archive
             </span>
             <span class={`text-[12px] ${iz() ? "text-white/40" : "text-zinc-500"}`}>
-              <kbd class={`px-1 py-0.5 rounded text-[11px] font-mono ${iz() ? "bg-white/10 text-white/50" : "bg-zinc-100 text-zinc-500"}`}>Esc</kbd> back
+              <kbd class={`px-1 py-0.5 rounded text-[11px] font-mono ${iz() ? "bg-white/10 text-white/50" : "bg-zinc-100 text-zinc-500"}`}>esc</kbd> back
             </span>
           </div>
         </Show>

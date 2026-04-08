@@ -21,6 +21,16 @@ interface SidebarProps {
   isInboxZero: () => boolean;
   onCollapse: () => void;
   allAccountSplits: () => Record<string, SplitConfig[]>;
+  showCalendar: () => boolean;
+  onOpenCalendar: () => void;
+}
+
+function todayLabel(): string {
+  const d = new Date();
+  const month = d.toLocaleDateString("en-US", { month: "long" });
+  const day = d.getDate();
+  const weekday = d.toLocaleDateString("en-US", { weekday: "long" });
+  return `${month.toLowerCase()} ${day}, ${weekday.toLowerCase()}`;
 }
 
 export default function Sidebar(props: SidebarProps) {
@@ -63,13 +73,16 @@ export default function Sidebar(props: SidebarProps) {
           Scratchpad
         </div> */}
 
-        {/* ── Morphis ── */}
+        {/* ── Calendar ── */}
         <div
-          class={`px-10 py-1.5 pb-3 text-[13px] font-medium ${
-            iz() ? "text-white/50" : "text-zinc-500"
+          onClick={() => props.onOpenCalendar()}
+          class={`px-10 py-1.5 pb-3 cursor-pointer text-[13px] font-medium ${
+            props.showCalendar()
+              ? iz() ? "text-white" : "text-zinc-900"
+              : iz() ? "text-white/50 hover:text-white/70" : "text-zinc-500 hover:text-zinc-700"
           }`}
         >
-          morphis
+          {todayLabel()}
         </div>
 
         {/* ── Thin line ── */}
@@ -151,7 +164,7 @@ export default function Sidebar(props: SidebarProps) {
                                     : iz() ? "text-zinc-300 hover:text-zinc-100" : "text-zinc-500 hover:text-zinc-800"
                                 }`}
                               >
-                                {mb.label}
+                                {mb.label.toLowerCase()}
                               </div>
                             )}
                           </For>
@@ -178,7 +191,7 @@ export default function Sidebar(props: SidebarProps) {
                                 : iz() ? "text-white/50 hover:text-white/70" : "text-zinc-500 hover:text-zinc-700"
                             }`}
                           >
-                            <span class="truncate">{split.name}</span>
+                            <span class="truncate">{split.name.toLowerCase()}</span>
                             <Show when={count() > 0}>
                               <span class={`text-[11px] tabular-nums flex-shrink-0 ${
                                 iz() ? "text-white/40" : "text-zinc-400"
