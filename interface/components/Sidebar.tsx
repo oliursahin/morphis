@@ -38,9 +38,14 @@ export default function Sidebar(props: SidebarProps) {
   createEffect(() => {
     const id = props.activeAccountId();
     if (!id) return;
+    const requestId = id;
     invoke<string | null>("load_setting", { key: `workspace_name_${id}` })
-      .then((v) => setWorkspaceName(v))
-      .catch(() => setWorkspaceName(null));
+      .then((v) => {
+        if (props.activeAccountId() === requestId) setWorkspaceName(v);
+      })
+      .catch(() => {
+        if (props.activeAccountId() === requestId) setWorkspaceName(null);
+      });
   });
 
   const saveWorkspaceName = (name: string) => {
