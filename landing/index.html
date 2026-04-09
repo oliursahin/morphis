@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>morphis</title>
+    <meta name="description" content="A lightweight, privacy-first email client for Gmail" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div style="max-width: 720px; width: 100%; margin: 0 auto; padding: 0 1rem;">
+
+      <!-- Hero -->
+      <div class="hero">
+        <img src="/logo.png" alt="morphis" class="hero-logo" />
+        <p class="hero-subtitle" aria-label="There are many email clients, but this one is yours.">
+          There are many email clients, but this one
+          is <span class="hero-rotator" id="heroRotator" aria-hidden="true">yours</span>.
+        </p>
+        <div class="hero-links">
+          <a href="mailto:oliursahin@gmail.com?subject=request%20access&body=can%20you%20grant%20me%20access%20to%20morphis%20%3F">request access</a>
+          <a href="https://github.com/oliursahin/morphis">github</a>
+        </div>
+      </div>
+
+      <!-- Install (inline, becomes sticky on scroll past) -->
+      <div class="install-box">
+        <code><span class="prefix">$</span> morphis_0.1.1_aarch64.dmg</code>
+        <a href="https://github.com/oliursahin/memphis/releases/latest" class="copy-btn">download</a>
+      </div>
+
+      <!-- Demo -->
+      <div class="demo">
+        <img src="/hero.gif" alt="morphis demo" />
+      </div>
+
+      <!-- About -->
+      <div class="section">
+        <div class="section-label">about</div>
+        <p>
+          Morphis is a lightweight, privacy-first email client for Gmail. All your data stays on your machine. Built with <strong>Rust</strong> and <strong>Tauri</strong> for a native experience with a tiny footprint.
+        </p>
+        <p>
+          No cloud servers, no analytics, no tracking. Your emails are stored in a local <strong>SQLite</strong> database and never sent anywhere except Gmail's own API. Keyboard-driven, fast, and designed to get out of your way.
+        </p>
+      </div>
+
+      <!-- Keyboard First -->
+      <div class="section">
+        <div class="section-label">navigation</div>
+        <p>
+          <strong>Keyboard first.</strong>
+          Navigate and manage your entire inbox from the keyboard. Triage, reply, archive, search — all without reaching for the mouse. Vim-inspired motions that feel natural from day one.
+        </p>
+        <p>
+          <code>J</code> / <code>K</code> to move between threads. <code>Enter</code> to open. <code>E</code> to archive. <code>C</code> to compose. <code>/</code> to search. <code>Cmd+K</code> for the command palette.
+        </p>
+      </div>
+
+      <!-- Inbox Splits -->
+      <div class="section">
+        <div class="section-label">organization</div>
+        <p>
+          <strong>Inbox splits.</strong>
+          Automatically categorize incoming emails into focused tabs — Important, Calendar, GitHub, Others. Each split has its own thread count so you always know what needs attention.
+        </p>
+        <p>
+          Customizable queries let you define your own splits. Set up per-account configurations that match your workflow.
+        </p>
+      </div>
+
+      <!-- Search -->
+      <div class="section">
+        <div class="section-label">search</div>
+        <p>
+          <strong>Full-text search.</strong>
+          Powered by <a href="https://github.com/quickwit-oss/tantivy">Tantivy</a>, the same engine behind Quickwit. Search across all your emails instantly — subject, body, sender, labels. Everything is indexed locally on your machine.
+        </p>
+      </div>
+
+      <!-- Sync -->
+      <div class="section">
+        <div class="section-label">sync</div>
+        <p>
+          <strong>Background sync.</strong>
+          Continuous sync with Gmail keeps your inbox up to date. New emails appear instantly. The sync engine runs in the background — no manual refresh, no stale data.
+        </p>
+      </div>
+
+      <!-- Accounts -->
+      <div class="section">
+        <div class="section-label">accounts</div>
+        <p>
+          <strong>Multiple accounts.</strong>
+          Manage several Gmail accounts from a single window. Switch between personal and work inboxes instantly. Each account gets its own split configuration, sync state, and search index.
+        </p>
+      </div>
+
+      <!-- Local Storage -->
+      <div class="section">
+        <div class="section-label">privacy</div>
+        <p>
+          <strong>SQLite database.</strong> Nothing leaves your device. Emails are cached locally for instant access and full-text search. The database lives in your home directory — back it up, move it, delete it.
+        </p>
+        <p>
+          <strong>Zero telemetry.</strong> No analytics, no crash reporting, no usage tracking. Morphis doesn't phone home.
+        </p>
+        <p>
+          <strong>Open source.</strong> MIT licensed. Read the code, audit it, fork it.
+        </p>
+      </div>
+
+      <!-- Stack -->
+      <div class="section">
+        <div class="section-label">stack</div>
+        <p>
+          <strong>Rust</strong> backend via Tauri for native performance and a small binary. <strong>SolidJS</strong> frontend for a reactive, snappy UI. <strong>Tantivy</strong> for full-text search. <strong>SQLite</strong> for local persistence.
+        </p>
+        <p>
+          Requires <a href="https://rustup.rs">Rust</a> 1.77.2+ and <a href="https://nodejs.org">Node.js</a> 18+. macOS only (for now).
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <footer class="site-footer">
+        <hr class="footer-divider" />
+        <div class="footer-links">
+          <span>mit license · <a href="https://github.com/oliursahin/morphis">github</a> · landing page inspired by <a href="https://pi.dev/">pi.dev</a></span>
+        </div>
+      </footer>
+
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
