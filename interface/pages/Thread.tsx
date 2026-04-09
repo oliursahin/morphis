@@ -514,7 +514,7 @@ function EmailBody(props: { html: string }) {
     doc.open();
     doc.write(`<!DOCTYPE html>
 <html><head>
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src https: data:;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src http: https: data:;">
 <style>
   * { box-sizing: border-box; }
   body {
