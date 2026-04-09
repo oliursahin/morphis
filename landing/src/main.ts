@@ -26,7 +26,7 @@ if (subtitle && rotator) {
         rotator!.textContent = options[index];
         subtitle!.setAttribute(
           "aria-label",
-          `There are many email clients, but this one is ${options[index]}.`
+          `there are many email clients, but this one is ${options[index]}.`
         );
         rotator!.classList.remove("is-fading");
       }
