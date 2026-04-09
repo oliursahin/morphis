@@ -811,8 +811,10 @@ export default function App() {
     }
 
     switch (e.key) {
-      case "j": e.preventDefault(); navigateThread(1); break;
-      case "k": e.preventDefault(); navigateThread(-1); break;
+      case "j":
+      case "ArrowDown": e.preventDefault(); navigateThread(1); break;
+      case "k":
+      case "ArrowUp": e.preventDefault(); navigateThread(-1); break;
       case "Enter":
         e.preventDefault();
         if (!openThread() && selectedId()) selectAndOpen(selectedId()!);
