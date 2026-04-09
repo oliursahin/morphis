@@ -460,10 +460,16 @@ export default function App() {
   const navigateThread = (direction: 1 | -1) => {
     const ids = threadIds();
     if (ids.length === 0) return;
-    const current = selectedId();
+    const current = openThread()?.id ?? selectedId();
     const idx = current ? ids.indexOf(current) : -1;
     const next = idx + direction;
-    if (next >= 0 && next < ids.length) selectAndOpen(ids[next]);
+    if (next >= 0 && next < ids.length) {
+      if (openThread()) {
+        selectAndOpen(ids[next]);
+      } else {
+        setSelectedId(ids[next]);
+      }
+    }
   };
 
   // Unified archive/trash: optimistic UI removal + Gmail API call
