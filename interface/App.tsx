@@ -361,6 +361,11 @@ export default function App() {
   const loadSplit = (splitId: string) => {
     setActiveTab(splitId);
     setActiveMailbox(null);
+    setOpenThread(null);
+    setInlineReply(false);
+    setReplyAll(false);
+    setShowCompose(false);
+    setShowSettings(false);
   };
 
   // Unified mailbox prefetch
@@ -455,10 +460,16 @@ export default function App() {
   const navigateThread = (direction: 1 | -1) => {
     const ids = threadIds();
     if (ids.length === 0) return;
-    const current = selectedId();
+    const current = openThread()?.id ?? selectedId();
     const idx = current ? ids.indexOf(current) : -1;
     const next = idx + direction;
-    if (next >= 0 && next < ids.length) selectAndOpen(ids[next]);
+    if (next >= 0 && next < ids.length) {
+      if (openThread()) {
+        selectAndOpen(ids[next]);
+      } else {
+        setSelectedId(ids[next]);
+      }
+    }
   };
 
   // Unified archive/trash: optimistic UI removal + Gmail API call
@@ -806,8 +817,10 @@ export default function App() {
     }
 
     switch (e.key) {
-      case "j": e.preventDefault(); navigateThread(1); break;
-      case "k": e.preventDefault(); navigateThread(-1); break;
+      case "j":
+      case "ArrowDown": e.preventDefault(); navigateThread(1); break;
+      case "k":
+      case "ArrowUp": e.preventDefault(); navigateThread(-1); break;
       case "Enter":
         e.preventDefault();
         if (!openThread() && selectedId()) selectAndOpen(selectedId()!);
@@ -974,9 +987,6 @@ export default function App() {
           activeMailbox={activeMailbox}
           onOpenMailbox={openMailbox}
           mailboxDefs={MAILBOX_DEFS}
-          onShowSearch={() => setShowSearch(true)}
-          onShowCommandBar={() => setShowCommandBar(true)}
-          onShowSettings={() => setShowSettings(true)}
           isInboxZero={isInboxZero}
           onCollapse={() => setSidebarCollapsed(true)}
         />
