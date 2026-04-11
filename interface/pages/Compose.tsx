@@ -1,4 +1,4 @@
-import { createSignal, onMount, onCleanup, Show } from "solid-js";
+import { createSignal, onMount, onCleanup, Show, For } from "solid-js";
 import { invoke } from "@tauri-apps/api/core";
 
 interface ComposeViewProps {
@@ -52,6 +52,74 @@ export default function ComposeView(props: ComposeViewProps) {
   const [bodyEmpty, setBodyEmpty] = createSignal(!(props.initialBody || props.initialBodyHtml));
   let savedRange: Range | null = null;
   let saveTimer: number | undefined;
+
+  // Contact autocomplete state
+  const [suggestions, setSuggestions] = createSignal<{ name: string; email: string }[]>([]);
+  const [selectedIdx, setSelectedIdx] = createSignal(0);
+  const [showSuggestions, setShowSuggestions] = createSignal(false);
+  let suggestionTimer: number | undefined;
+  let toInputRef: HTMLInputElement | undefined;
+  let searchSeq = 0;
+
+  // Extract the current token being typed (after the last comma)
+  const getCurrentToken = () => {
+    const val = to();
+    const lastComma = val.lastIndexOf(",");
+    return lastComma === -1 ? val.trim() : val.slice(lastComma + 1).trim();
+  };
+
+  const searchContacts = (query: string) => {
+    if (suggestionTimer) clearTimeout(suggestionTimer);
+    const seq = ++searchSeq;
+    if (query.length < 1) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    suggestionTimer = window.setTimeout(async () => {
+      try {
+        const results = await invoke<{ name: string; email: string }[]>("search_contacts", { query });
+        if (seq !== searchSeq) return;
+        setSuggestions(results);
+        setSelectedIdx(0);
+        setShowSuggestions(results.length > 0);
+      } catch {
+        if (seq !== searchSeq) return;
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
+    }, 150);
+  };
+
+  const selectContact = (contact: { name: string; email: string }) => {
+    const val = to();
+    const lastComma = val.lastIndexOf(",");
+    const prefix = lastComma === -1 ? "" : val.slice(0, lastComma + 1) + " ";
+    setTo(prefix + contact.email + ", ");
+    setSuggestions([]);
+    setShowSuggestions(false);
+    scheduleSave();
+    toInputRef?.focus();
+  };
+
+  const handleToKeyDown = (e: KeyboardEvent) => {
+    if (!showSuggestions()) return;
+    const items = suggestions();
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelectedIdx((i) => (i + 1) % items.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedIdx((i) => (i - 1 + items.length) % items.length);
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      if (items.length > 0) {
+        e.preventDefault();
+        selectContact(items[selectedIdx()]);
+      }
+    } else if (e.key === "Escape") {
+      setShowSuggestions(false);
+    }
+  };
 
   let editorRef: HTMLDivElement | undefined;
 
@@ -279,15 +347,60 @@ export default function ComposeView(props: ComposeViewProps) {
           {/* Header fields */}
           <div class="flex-shrink-0 space-y-3 mb-4">
             {/* To row */}
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-3 relative">
               <input
                 type="text"
                 value={to()}
-                onInput={(e) => { setTo(e.currentTarget.value); scheduleSave(); }}
+                onInput={(e) => {
+                  setTo(e.currentTarget.value);
+                  scheduleSave();
+                  searchContacts(getCurrentToken());
+                }}
+                onKeyDown={handleToKeyDown}
+                onFocus={() => {
+                  const token = getCurrentToken();
+                  if (token.length >= 1) searchContacts(token);
+                }}
+                onBlur={() => {
+                  // Delay to allow click on suggestion
+                  setTimeout(() => setShowSuggestions(false), 200);
+                }}
                 class="flex-1 text-[14px] text-zinc-800 bg-transparent outline-none placeholder:text-zinc-400"
                 placeholder="To"
-                ref={(el) => setTimeout(() => el.focus(), 0)}
+                ref={(el) => {
+                  toInputRef = el;
+                  setTimeout(() => el.focus(), 0);
+                }}
               />
+              {/* Contact suggestions dropdown */}
+              <Show when={showSuggestions() && suggestions().length > 0}>
+                <div class="absolute left-0 top-full mt-1 w-full bg-white border border-zinc-200 rounded-lg shadow-lg z-50 py-1 max-h-[240px] overflow-y-auto">
+                  <For each={suggestions()}>
+                    {(contact, idx) => (
+                      <button
+                        type="button"
+                        class={`w-full flex items-center gap-4 px-4 py-2 text-left transition-colors ${
+                          idx() === selectedIdx()
+                            ? "bg-zinc-100"
+                            : "hover:bg-zinc-50"
+                        }`}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          selectContact(contact);
+                        }}
+                        onMouseEnter={() => setSelectedIdx(idx())}
+                      >
+                        <span class="text-[14px] text-zinc-800 truncate min-w-0">
+                          {contact.name}
+                        </span>
+                        <span class="text-[13px] text-zinc-400 truncate min-w-0">
+                          {contact.email}
+                        </span>
+                      </button>
+                    )}
+                  </For>
+                </div>
+              </Show>
               <button
                 onClick={() => setShowCc(!showCc())}
                 class="text-zinc-400 hover:text-zinc-600 transition-colors p-0.5 flex-shrink-0"

@@ -93,6 +93,7 @@ pub fn run() {
             commands::settings::get_setting,
             commands::sync::trigger_sync,
             commands::unsplash::get_inbox_zero_photo,
+            commands::compose::search_contacts,
         ])
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
