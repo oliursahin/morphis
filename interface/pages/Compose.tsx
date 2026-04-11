@@ -59,6 +59,7 @@ export default function ComposeView(props: ComposeViewProps) {
   const [showSuggestions, setShowSuggestions] = createSignal(false);
   let suggestionTimer: number | undefined;
   let toInputRef: HTMLInputElement | undefined;
+  let searchSeq = 0;
 
   // Extract the current token being typed (after the last comma)
   const getCurrentToken = () => {
@@ -74,13 +75,16 @@ export default function ComposeView(props: ComposeViewProps) {
       setShowSuggestions(false);
       return;
     }
+    const seq = ++searchSeq;
     suggestionTimer = window.setTimeout(async () => {
       try {
         const results = await invoke<{ name: string; email: string }[]>("search_contacts", { query });
+        if (seq !== searchSeq) return;
         setSuggestions(results);
         setSelectedIdx(0);
         setShowSuggestions(results.length > 0);
       } catch {
+        if (seq !== searchSeq) return;
         setSuggestions([]);
         setShowSuggestions(false);
       }
