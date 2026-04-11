@@ -34,8 +34,7 @@ pub async fn search_contacts(
                 "SELECT email FROM accounts WHERE id = ?1",
                 [&account_id],
                 |row| row.get(0),
-            )
-            .unwrap_or_default();
+            )?;
 
         let pattern = format!("%{query}%");
 
