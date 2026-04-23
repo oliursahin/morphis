@@ -84,6 +84,7 @@ pub fn run() {
             commands::inbox::get_unsubscribe_url,
             commands::inbox::download_eml,
             commands::inbox::send_email,
+            commands::inbox::get_email_opens,
             commands::inbox::save_draft,
             commands::inbox::delete_draft,
             commands::labels::list_labels,

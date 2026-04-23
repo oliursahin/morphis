@@ -174,12 +174,13 @@ struct EmailParams {
     body: String,
     body_html: Option<String>,
     in_reply_to: Option<String>,
+    tracking_id: Option<String>,
 }
 
 /// Build an RFC 2822 MIME message (multipart/alternative with plain + HTML).
 fn build_rfc2822(params: &EmailParams) -> String {
     let body_plain = params.body.clone();
-    let body_html = if let Some(html) = &params.body_html {
+    let mut body_html = if let Some(html) = &params.body_html {
         html.clone()
     } else {
         params.body
@@ -188,6 +189,16 @@ fn build_rfc2822(params: &EmailParams) -> String {
             .replace('>', "&gt;")
             .replace('\n', "<br>")
     };
+
+    // Inject tracking pixel if tracking is enabled
+    if let Some(tracking_id) = &params.tracking_id {
+        if let Some(worker_url) = crate::integrations::tracking::tracking_worker_url() {
+            body_html.push_str(&format!(
+                r#"<img src="{}/t/{}.png" width="1" height="1" alt="" style="display:none;" />"#,
+                worker_url, tracking_id
+            ));
+        }
+    }
 
     let boundary = format!("----=_Part_{}", uuid::Uuid::new_v4().as_simple());
     let date = chrono::Utc::now().format("%a, %d %b %Y %H:%M:%S %z").to_string();
@@ -684,6 +695,8 @@ async fn extract_body(msg: &GmailMessage, client: &GmailClient) -> String {
                     sanitized = sanitized.replace(&format!("cid:{cid}"), data_uri);
                 }
             }
+            // Strip tracking pixels to prevent self-opens
+            sanitized = strip_tracking_pixels(&sanitized);
             return sanitized;
         }
         log::warn!("HTML body decoded to empty for message {}", msg.id);
@@ -880,6 +893,15 @@ pub async fn send_email(
     body_html: Option<String>,
 ) -> Result<(), Error> {
     let (client, from_email, from_display) = get_gmail_client_with_sender(&state).await?;
+
+    // Generate tracking ID if tracking is configured
+    let tracking_enabled = crate::integrations::tracking::TrackingClient::from_env().is_some();
+    let tracking_id = if tracking_enabled {
+        Some(uuid::Uuid::new_v4().to_string())
+    } else {
+        None
+    };
+
     let raw = build_rfc2822(&EmailParams {
         from_display: sanitize_header(&from_display),
         from_email: sanitize_header(&from_email),
@@ -888,11 +910,23 @@ pub async fn send_email(
         bcc: bcc.map(|v| sanitize_header(&v)),
         subject: sanitize_header(&subject),
         body,
-        body_html: body_html,
+        body_html,
         in_reply_to: None,
+        tracking_id: tracking_id.clone(),
     });
     let encoded = URL_SAFE_NO_PAD.encode(raw.as_bytes());
     client.send_message(&encoded).await?;
+
+    // Save tracking record after successful send
+    if let Some(tid) = &tracking_id {
+        let conn = state.db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
+        let account_id = resolve_account_id(&conn)?;
+        let id = uuid::Uuid::new_v4().to_string();
+        if let Err(e) = crate::db::tracking::insert_tracking(&conn, &id, tid, &account_id, "", &to) {
+            log::warn!("Failed to save tracking record: {e}");
+        }
+    }
+
     log::info!("Sent new email to {to}");
     Ok(())
 }
@@ -910,6 +944,15 @@ pub async fn send_reply(
     body: String,
 ) -> Result<(), Error> {
     let (client, from_email, from_display) = get_gmail_client_with_sender(&state).await?;
+
+    // Generate tracking ID if tracking is configured
+    let tracking_enabled = crate::integrations::tracking::TrackingClient::from_env().is_some();
+    let tracking_id = if tracking_enabled {
+        Some(uuid::Uuid::new_v4().to_string())
+    } else {
+        None
+    };
+
     let raw = build_rfc2822(&EmailParams {
         from_display: sanitize_header(&from_display),
         from_email: sanitize_header(&from_email),
@@ -920,11 +963,71 @@ pub async fn send_reply(
         body,
         body_html: None,
         in_reply_to: Some(sanitize_header(&message_id)),
+        tracking_id: tracking_id.clone(),
     });
     let encoded = URL_SAFE_NO_PAD.encode(raw.as_bytes());
     client.send_message(&encoded).await?;
+
+    // Save tracking record after successful send
+    if let Some(tid) = &tracking_id {
+        let conn = state.db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
+        let account_id = resolve_account_id(&conn)?;
+        let id = uuid::Uuid::new_v4().to_string();
+        if let Err(e) = crate::db::tracking::insert_tracking(&conn, &id, tid, &account_id, &thread_id, &to) {
+            log::warn!("Failed to save tracking record: {e}");
+        }
+    }
+
     log::info!("Sent reply in thread {thread_id} to {to}");
     Ok(())
+}
+
+// ── Email tracking ──
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ThreadOpens {
+    /// Tracking records from local SQLite (one per sent message with tracking).
+    pub records: Vec<crate::db::tracking::TrackingRecord>,
+    /// Open events fetched from the tracking worker, keyed by tracking_id.
+    pub opens: std::collections::HashMap<String, Vec<crate::integrations::tracking::OpenEvent>>,
+}
+
+/// Fetch email open tracking data for a thread.
+#[tauri::command]
+pub async fn get_email_opens(
+    state: State<'_, AppState>,
+    thread_id: String,
+) -> Result<ThreadOpens, Error> {
+    let records = {
+        let conn = state.db.lock().map_err(|e| Error::Internal(format!("DB lock: {e}")))?;
+        let account_id = resolve_account_id(&conn)?;
+        crate::db::tracking::get_tracking_ids_for_thread(&conn, &account_id, &thread_id)?
+    };
+
+    if records.is_empty() {
+        return Ok(ThreadOpens {
+            records,
+            opens: std::collections::HashMap::new(),
+        });
+    }
+
+    // Try to fetch opens from the tracking worker
+    let opens = match crate::integrations::tracking::TrackingClient::from_env() {
+        Some(client) => {
+            let ids: Vec<String> = records.iter().map(|r| r.tracking_id.clone()).collect();
+            match client.fetch_opens(&ids).await {
+                Ok(data) => data,
+                Err(e) => {
+                    log::warn!("Failed to fetch tracking opens: {e}");
+                    std::collections::HashMap::new()
+                }
+            }
+        }
+        None => std::collections::HashMap::new(),
+    };
+
+    Ok(ThreadOpens { records, opens })
 }
 
 /// Save (create or update) a draft in Gmail.
@@ -951,6 +1054,7 @@ pub async fn save_draft(
         body,
         body_html,
         in_reply_to: None,
+        tracking_id: None, // No tracking for drafts
     });
     let encoded = URL_SAFE_NO_PAD.encode(raw.as_bytes());
 
@@ -977,6 +1081,40 @@ pub async fn delete_draft(
     client.delete_draft(&draft_id).await?;
     log::info!("Deleted draft {draft_id}");
     Ok(())
+}
+
+/// Strip tracking pixel <img> tags that point at our tracking worker URL.
+/// Prevents self-opens when viewing sent messages in Morphis.
+fn strip_tracking_pixels(html: &str) -> String {
+    let worker_url = match crate::integrations::tracking::tracking_worker_url() {
+        Some(url) => url,
+        None => return html.to_string(),
+    };
+    let needle = format!("{}/t/", worker_url);
+    let mut result = String::with_capacity(html.len());
+    let mut remaining = html;
+    while let Some(img_pos) = remaining.find("<img ") {
+        result.push_str(&remaining[..img_pos]);
+        let after_img = &remaining[img_pos..];
+        if let Some(end) = after_img.find('>') {
+            let tag = &after_img[..=end];
+            if tag.contains(&needle) {
+                // Skip this tag entirely
+                remaining = &after_img[end + 1..];
+                continue;
+            }
+            // Not a tracking pixel — keep the tag
+            result.push_str(tag);
+            remaining = &after_img[end + 1..];
+        } else {
+            // Malformed — keep the rest as-is
+            result.push_str(after_img);
+            remaining = "";
+            break;
+        }
+    }
+    result.push_str(remaining);
+    result
 }
 
 /// Strip CR/LF from a header value to prevent CRLF injection.
