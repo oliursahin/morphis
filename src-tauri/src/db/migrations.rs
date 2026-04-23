@@ -19,6 +19,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "004_calendar_flag",
         include_str!("../../migrations/004_calendar_flag.sql"),
     ),
+    (
+        "005_email_tracking",
+        include_str!("../../migrations/005_email_tracking.sql"),
+    ),
 ];
 
 pub fn run_migrations(conn: &Connection) -> Result<(), Error> {
