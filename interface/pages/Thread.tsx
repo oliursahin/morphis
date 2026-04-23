@@ -17,9 +17,30 @@ interface ThreadDetailResponse {
   messages: Message[];
 }
 
+interface OpenEvent {
+  openedAt: string;
+  ip: string | null;
+  userAgent: string | null;
+}
+
+interface TrackingRecord {
+  id: string;
+  trackingId: string;
+  accountId: string;
+  providerThreadId: string;
+  recipientEmail: string;
+  createdAt: string;
+}
+
+interface ThreadOpens {
+  records: TrackingRecord[];
+  opens: Record<string, OpenEvent[]>;
+}
+
 interface ThreadViewProps {
   threadId: string;
   subject: string;
+  accountEmail?: string;
   onBack: () => void;
   replyOpen?: boolean;
   replyAll?: boolean;
@@ -42,11 +63,17 @@ export default function ThreadView(props: ThreadViewProps) {
   const [showSignature, setShowSignature] = createSignal(false);
   const [signature, setSignature] = createSignal("Sent with morphis");
   const [signatureEnabled, setSignatureEnabled] = createSignal(true);
+  const [trackingData, setTrackingData] = createSignal<ThreadOpens | null>(null);
   let threadContentRef: HTMLDivElement | undefined;
 
   const fetchThread = (id: string) => {
     setLoading(true);
     setError(null);
+
+    // Best-effort tracking data fetch (silent failure)
+    invoke<ThreadOpens>("get_email_opens", { threadId: id })
+      .then((data) => setTrackingData(data))
+      .catch(() => setTrackingData(null));
 
     invoke<ThreadDetailResponse>("get_thread_detail", { threadId: id })
       .then((detail) => {
@@ -216,6 +243,8 @@ export default function ThreadView(props: ThreadViewProps) {
                     message={msg}
                     isCollapsed={collapsed().has(msg.id)}
                     onToggle={() => toggleCollapse(msg.id)}
+                    accountEmail={props.accountEmail}
+                    trackingData={trackingData()}
                   />
                 )}
               </For>
@@ -397,9 +426,36 @@ export default function ThreadView(props: ThreadViewProps) {
   );
 }
 
-function MessageBubble(props: { message: Message; isCollapsed: boolean; onToggle: () => void }) {
+function MessageBubble(props: {
+  message: Message;
+  isCollapsed: boolean;
+  onToggle: () => void;
+  accountEmail?: string;
+  trackingData?: ThreadOpens | null;
+}) {
   const msg = () => props.message;
   const [detailsOpen, setDetailsOpen] = createSignal(false);
+  const [opensPopover, setOpensPopover] = createSignal(false);
+
+  const isSentByMe = () => {
+    const email = msg().fromEmail;
+    return email === "me" || (props.accountEmail && email === props.accountEmail);
+  };
+
+  // Get tracking opens for this sent message (match by recipient email in tracking records)
+  const messageOpens = (): OpenEvent[] => {
+    if (!isSentByMe() || !props.trackingData) return [];
+    const data = props.trackingData;
+    // Find tracking records whose recipientEmail matches this message's "to"
+    const allOpens: OpenEvent[] = [];
+    for (const record of data.records) {
+      const opens = data.opens[record.trackingId] || [];
+      allOpens.push(...opens);
+    }
+    return allOpens;
+  };
+
+  const openCount = () => messageOpens().length;
 
   // Strip HTML for collapsed preview
   const plainPreview = () => {
@@ -438,6 +494,44 @@ function MessageBubble(props: { message: Message; isCollapsed: boolean; onToggle
           <span class="text-[14px] font-semibold text-zinc-900">{msg().fromName}</span>
           <span class="text-[13px] text-zinc-500">{msg().fromEmail}</span>
           <div class="flex-1" />
+          <Show when={isSentByMe() && openCount() > 0}>
+            <div class="relative flex-shrink-0">
+              <button
+                onClick={(e) => { e.stopPropagation(); setOpensPopover((v) => !v); }}
+                class="flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-emerald-50 text-emerald-600 hover:bg-emerald-100 transition-colors"
+                title={`Opened ${openCount()} time${openCount() !== 1 ? "s" : ""}`}
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" />
+                  <circle cx="8" cy="8" r="2" />
+                </svg>
+                {openCount()}
+              </button>
+              <Show when={opensPopover()}>
+                <div class="absolute right-0 top-full mt-1 z-50 bg-white border border-zinc-200 rounded-lg shadow-lg p-3 min-w-[200px] max-h-[200px] overflow-y-auto">
+                  <div class="text-[11px] font-medium text-zinc-500 mb-1.5">
+                    Opened {openCount()} time{openCount() !== 1 ? "s" : ""}
+                  </div>
+                  <For each={messageOpens()}>
+                    {(open) => (
+                      <div class="text-[11px] text-zinc-600 py-0.5">
+                        {new Date(open.openedAt + "Z").toLocaleString()}
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </Show>
+            </div>
+          </Show>
+          <Show when={isSentByMe() && openCount() === 0 && props.trackingData && props.trackingData.records.length > 0}>
+            <span class="flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium bg-zinc-50 text-zinc-400 flex-shrink-0" title="Not yet opened">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" />
+                <circle cx="8" cy="8" r="2" />
+              </svg>
+              0
+            </span>
+          </Show>
           <span class="text-[12px] text-zinc-500 flex-shrink-0">{msg().date}</span>
         </div>
 

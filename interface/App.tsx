@@ -1118,6 +1118,7 @@ export default function App() {
               <ThreadView
                 threadId={thread().id}
                 subject={thread().subject}
+                accountEmail={activeAccount()?.email}
                 onBack={() => { setOpenThread(null); setInlineReply(false); setReplyAll(false); }}
                 replyOpen={inlineReply()}
                 replyAll={replyAll()}
